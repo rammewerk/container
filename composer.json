@@ -1,0 +1,35 @@
+{
+  "name": "rammewerk/container",
+  "type": "library",
+  "description": "Simple dependency injection container for PHP",
+  "homepage": "https://rammewerk.com",
+  "license": "MIT",
+  "keywords": [
+    "container",
+    "ioc",
+    "dependency injection"
+  ],
+  "authors": [
+    {
+      "name": "Kristoffer Follestad",
+      "email": "kristoffer@rammewerk.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Rammewerk\\Component\\Container\\": "src/"
+    },
+    "exclude-from-classmap": [
+      "tests/",
+      ".idea/"
+    ]
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Rammewerk\\Component\\Container\\Tests\\": "tests/"
+    }
+  },
+  "require": {
+    "php": ">=8.2"
+  }
+}
