@@ -1,7 +1,7 @@
 {
   "name": "rammewerk/container",
   "type": "library",
-  "description": "Simple dependency injection container for PHP",
+  "description": "Simple and performant dependency injection container for PHP",
   "homepage": "https://rammewerk.com",
   "license": "MIT",
   "keywords": [

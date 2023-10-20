@@ -33,6 +33,7 @@ class Container {
 
     /**
      * Define classes which are shared instances (singleton) - Immutable
+     * Remove from instances and cache if already created.
      *
      * @param class-string[] $classes
      *
@@ -40,10 +41,10 @@ class Container {
      */
     public function share(array $classes): static {
         $container = clone $this;
-        foreach( $classes as $class ) {
-            unset($container->instances[$class], $container->cache[$class]);
-            $container->shared[] = $class;
-        }
+        $container->shared = array_merge( $container->shared, $classes );
+        $keys = array_flip( $classes );
+        $container->instances = array_diff_key( $container->instances, $keys );
+        $container->cache = array_diff_key( $container->cache, $keys );
         return $container;
     }
 
@@ -57,7 +58,7 @@ class Container {
      * @return static
      */
     public function bind(string $interface, string|Closure $implementation): static {
-        return $this->bindings([$interface => $implementation]);
+        return $this->bindings( [$interface => $implementation] );
     }
 
 
@@ -70,9 +71,7 @@ class Container {
      */
     public function bindings(array $bindings): static {
         $container = clone $this;
-        foreach( $bindings as $target => $implementation ) {
-            $container->bindings[$target] = $implementation;
-        }
+        $container->bindings = array_merge( $container->bindings, $bindings );
         return $container;
     }
 
@@ -89,9 +88,9 @@ class Container {
      */
     public function create(string $name, array $args = []): object {
 
-        if( isset($this->bindings[$name]) && is_string($this->bindings[$name]) ) {
+        if( isset( $this->bindings[$name] ) && is_string( $this->bindings[$name] ) ) {
             /** @phpstan-ignore-next-line - Get the binding instead, if registered */
-            return $this->create($this->bindings[$name], $args);
+            return $this->create( $this->bindings[$name], $args );
         }
 
         /**
@@ -99,36 +98,36 @@ class Container {
          *
          * @phpstan-ignore-next-line
          */
-        if( !empty($this->instances[$name]) ) return $this->instances[$name];
+        if( !empty( $this->instances[$name] ) ) return $this->instances[$name];
 
-        if( empty($this->cache[$name]) ) try {
+        if( empty( $this->cache[$name] ) ) try {
 
-            $class = new ReflectionClass($name);
+            $class = new ReflectionClass( $name );
 
             # Use the class name from ReflectionClass to normalize use of name
             $name = $class->name;
 
-            if( isset($this->bindings[$name]) && is_string($this->bindings[$name]) ) {
+            if( isset( $this->bindings[$name] ) && is_string( $this->bindings[$name] ) ) {
                 /** @phpstan-ignore-next-line - Get the binding instead, if registered */
-                return $this->create($this->bindings[$name], $args);
+                return $this->create( $this->bindings[$name], $args );
             }
 
             /** Redo new check for shared instances
              *
              * @phpstan-ignore-next-line
              */
-            if( !empty($this->instances[$name]) ) return $this->instances[$name];
+            if( !empty( $this->instances[$name] ) ) return $this->instances[$name];
 
 
             # Create a closure for creating the object
-            if( empty($this->cache[$name]) ) $this->cache[$name] = $this->getClosure($class);
+            if( empty( $this->cache[$name] ) ) $this->cache[$name] = $this->getClosure( $class );
 
         } catch( ReflectionException $e ) {
-            throw new ContainerException("Unable to reflect class: $name", $e->getCode(), $e);
+            throw new ContainerException( "Unable to reflect class: $name", $e->getCode(), $e );
         }
 
         // Return a fully constructed object of $name
-        return $this->cache[$name]($args);
+        return $this->cache[$name]( $args );
 
     }
 
@@ -138,7 +137,7 @@ class Container {
      *
      * @template T of object
      *
-     * @param \ReflectionClass<T> $class
+     * @param ReflectionClass<T> $class
      *
      * @return Closure(array<int, mixed>):T
      */
@@ -146,22 +145,22 @@ class Container {
 
         # Create parameter generating function in order to cache reflection on the parameters.
         # This way $reflect->getParameters() only ever gets called once
-        $parameters = $this->getParameters($class->getConstructor());
+        $parameters = $this->getParameters( $class->getConstructor() );
 
         # Make PHP throw an exception instead of a fatal error
         if( $class->isInterface() ) $closure = static function() {
-            throw new InvalidArgumentException('Cannot instantiate an interface');
+            throw new InvalidArgumentException( 'Cannot instantiate an interface' );
         };
 
         # Get a closure based on the type of object being created: Shared, normal or without constructor
         # If class has dependencies, call the $parameters closure to generate them based on $args
         else $closure = static function(array $args) use ($class, $parameters) {
-            return $class->newInstance(...$parameters($args));
+            return $class->newInstance( ...$parameters( $args ) );
         };
 
-        if( !in_array($class->name, $this->shared, true) ) return $closure;
+        if( !in_array( $class->name, $this->shared, true ) ) return $closure;
 
-        return $this->createSharedInstance($class->name, $closure);
+        return $this->createSharedInstance( $class->name, $closure );
 
     }
 
@@ -176,7 +175,7 @@ class Container {
      */
     private function createSharedInstance(string $name, Closure $closure): Closure {
         return function(array $args) use ($name, $closure) {
-            return $this->instances[$name] = $closure($args);
+            return $this->instances[$name] = $closure( $args );
         };
     }
 
@@ -191,12 +190,12 @@ class Container {
     private function getParameters(?ReflectionMethod $method): Closure {
 
         # Cache some information about the parameter in $parameter_info so (slow) reflection isn't needed every time
-        $parameter_info = $this->getParameterInfo($method instanceof ReflectionMethod ? $method->getParameters() : []);
+        $parameter_info = $this->getParameterInfo( $method instanceof ReflectionMethod ? $method->getParameters() : [] );
 
         # Return a closure that uses the cached information to generate the arguments for the method
         return function(array $args) use ($parameter_info): array {
 
-            return array_map(function($paramInfo) use ($args) {
+            return array_map( function($paramInfo) use ($args) {
 
                 [$class, $param, $type] = $paramInfo;
 
@@ -206,23 +205,23 @@ class Container {
                     # Loop through $args and see whether each value can match the current parameter based on type hint
                     # If the argument matched, add to param and remove it from $args, so it won't wrongly match another parameter
                     foreach( $args as $i => $arg ) {
-                        if( $arg instanceof $class || ( $arg === null && $param->allowsNull() ) ) {
-                            return array_splice($args, $i, 1)[0];
+                        if( $arg instanceof $class || ($arg === null && $param->allowsNull()) ) {
+                            return array_splice( $args, $i, 1 )[0];
                         }
                     }
 
                     # If class is this DI Container, return self!
                     if( $class === static::class ) return $this;
 
-                    if( isset($this->bindings[$class]) ) {
+                    if( isset( $this->bindings[$class] ) ) {
                         if( $this->bindings[$class] instanceof Closure ) {
-                            return $this->bindings[$class]($this);
+                            return $this->bindings[$class]( $this );
                         }
-                        return !$param->allowsNull() && class_exists($this->bindings[$class]) ? $this->create($this->bindings[$class]) : null;
+                        return !$param->allowsNull() && class_exists( $this->bindings[$class] ) ? $this->create( $this->bindings[$class] ) : null;
                     }
 
                     # Create and assign class to parameters
-                    return !$param->allowsNull() && class_exists($class) ? $this->create($class) : null;
+                    return !$param->allowsNull() && class_exists( $class ) ? $this->create( $class ) : null;
 
                 }
 
@@ -230,18 +229,18 @@ class Container {
                     # Find a match in $args for scalar types
                     foreach( $args as $i => $arg ) {
                         $scalar_check_function = "is_$type";
-                        if( function_exists($scalar_check_function) && $scalar_check_function($arg) ) {
-                            return array_splice($args, $i, 1)[0];
+                        if( function_exists( $scalar_check_function ) && $scalar_check_function( $arg ) ) {
+                            return array_splice( $args, $i, 1 )[0];
                         }
                     }
                 }
 
                 # Resolve if args
-                if( $args ) return array_shift($args);
+                if( $args ) return array_shift( $args );
 
                 return $param->isDefaultValueAvailable() ? $param->getDefaultValue() : null;
 
-            }, $parameter_info);
+            }, $parameter_info );
 
         };
 
@@ -254,7 +253,7 @@ class Container {
      * @return array<array{string|null, \ReflectionParameter, string|null}>
      */
     private function getParameterInfo(array $parameters): array {
-        return array_map(static function($param) {
+        return array_map( static function($param) {
 
             $type = $param->getType();
 
@@ -263,7 +262,7 @@ class Container {
 
             return [$class, $param, $type_name];
 
-        }, $parameters);
+        }, $parameters );
     }
 
 }
