@@ -2,7 +2,7 @@
 
 namespace Rammewerk\Component\Container\Tests\TestData;
 
-class TestClassD {
+readonly class TestClassD {
 
     public function __construct(
         private TestClassEInterface $classE

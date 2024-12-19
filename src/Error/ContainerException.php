@@ -2,6 +2,8 @@
 
 namespace Rammewerk\Component\Container\Error;
 
-class ContainerException extends \RuntimeException {
+use RuntimeException;
+
+class ContainerException extends RuntimeException {
 
 }

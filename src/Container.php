@@ -9,6 +9,7 @@ use ReflectionException;
 use ReflectionNamedType;
 use InvalidArgumentException;
 use Rammewerk\Component\Container\Error\ContainerException;
+use ReflectionParameter;
 
 class Container {
 
@@ -183,7 +184,7 @@ class Container {
     /**
      * Returns a closure that generates arguments for $method based on $rule and any $args passed into the closure
      *
-     * @param \ReflectionMethod|null $method
+     * @param ReflectionMethod|null $method
      *
      * @return Closure(array<int, mixed>):array<int, mixed>
      */
@@ -248,9 +249,9 @@ class Container {
 
 
     /**
-     * @param \ReflectionParameter[] $parameters
+     * @param ReflectionParameter[] $parameters
      *
-     * @return array<array{string|null, \ReflectionParameter, string|null}>
+     * @return array<array{string|null, ReflectionParameter, string|null}>
      */
     private function getParameterInfo(array $parameters): array {
         return array_map( static function($param) {
