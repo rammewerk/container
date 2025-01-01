@@ -16,7 +16,7 @@ in an object-oriented manner.
 * **Highly Performant**: By caching reflection results, the library ensures optimal performance, making it suitable for
   demanding applications.
 
-*Requires PHP 8.2 or higher.*
+*Requires PHP 8.4 or higher.*
 
 Installation
 ---------------
@@ -53,16 +53,16 @@ $container = $container->share([
     'Another\Shared\Class',
 ]);
 
-// Define bindings/substitutions for classes
+// Define a bindings/substitutions for classes
 $container = $container->bind('Some\Interface', 'Some\Implementation');
+
+// Or define a list of bindings
 $container = $container->bindings([
     'Another\Interface' => 'Another\Implementation',
+    'Some\Interface' => 'Some\Implementation',
     'YetAnother\Interface' => function( Container $container) {
         // Create object
         return $container->create(\YetAnother\Implementation::class, ['first_argument'])
-    },
-    'AnotherExample\Interface' => function() {
-        return new AnotherExample\Implementation();
     }
 ]);
 
