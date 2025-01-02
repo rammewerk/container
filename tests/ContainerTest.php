@@ -13,6 +13,7 @@ use Rammewerk\Component\Container\Tests\TestData\TestClassC;
 use Rammewerk\Component\Container\Tests\TestData\TestClassD;
 use Rammewerk\Component\Container\Tests\TestData\TestClassE;
 use Rammewerk\Component\Container\Tests\TestData\TestClassEInterface;
+use Rammewerk\Component\Container\Tests\TestData\TestClassF;
 use ReflectionClass;
 use Throwable;
 use TypeError;
@@ -21,15 +22,21 @@ class ContainerTest extends TestCase {
 
     private Container $container;
 
+
+
     public function setUp(): void {
         $this->container = new Container();
     }
+
+
 
     /** Check if a class can be created by container */
     public function testCreatingClassThroughContainer(): void {
         $classA = $this->container->create( TestClassA::class );
         $this->assertInstanceOf( TestClassA::class, $classA );
     }
+
+
 
     /** Make sure invalid class throws correct exception */
     public function testInvalidClass(): void {
@@ -43,11 +50,15 @@ class ContainerTest extends TestCase {
         $this->fail( "The code reached an unexpected point." );
     }
 
+
+
     /** Test a class that requires another class as dependency. Container should auto-resolve dependency */
     public function testAutoResolveDependency(): void {
         $classB = $this->container->create( TestClassB::class );
         $this->assertInstanceOf( TestClassB::class, $classB );
     }
+
+
 
     /**
      * Test to check that container fails if it tries to create class with a string parameter.
@@ -63,6 +74,8 @@ class ContainerTest extends TestCase {
         $this->fail( "The code reached an unexpected point." );
     }
 
+
+
     /**
      * Test class that require a string parameter and that it pass this from creation
      */
@@ -71,6 +84,8 @@ class ContainerTest extends TestCase {
         $class = $this->container->create( TestClassC::class, [$value] );
         $this->assertSame( $value, $class->value );
     }
+
+
 
     /**
      * Test binding of interface. Test class that requires a dependency of interface and that we can bind this
@@ -81,6 +96,8 @@ class ContainerTest extends TestCase {
         $this->assertTrue( $classD->getE() );
     }
 
+
+
     /**
      * Test bindings of interface. Test a class that require an interface.
      */
@@ -89,6 +106,8 @@ class ContainerTest extends TestCase {
         $classD = $container->create( TestClassD::class );
         $this->assertTrue( $classD->getE() );
     }
+
+
 
     /**
      * Test error when trying to create an interface class
@@ -102,6 +121,7 @@ class ContainerTest extends TestCase {
         }
         $this->fail( "The code reached an unexpected point." );
     }
+
 
 
     /**
@@ -122,6 +142,7 @@ class ContainerTest extends TestCase {
 
         /**
          * Check that class is cached and not in shared instances
+         *
          * @var array<class-string, Closure> $cache
          */
         $cache = $property_cache->getValue( $this->container );
@@ -135,6 +156,7 @@ class ContainerTest extends TestCase {
 
         /**
          * Check that class is set to share
+         *
          * @var class-string[] $shared
          */
         $shared = $property_shared->getValue( $container );
@@ -142,6 +164,7 @@ class ContainerTest extends TestCase {
 
         /**
          * Check that cache is removed
+         *
          * @var array<class-string, Closure> $new_cache
          */
         $new_cache = $property_cache->getValue( $container );
@@ -149,6 +172,7 @@ class ContainerTest extends TestCase {
 
         /**
          * As class isn't yet created, it should have no instances
+         *
          * @var array<class-string, object> $new_instances
          */
         $new_instances = $property_instances->getValue( $container );
@@ -158,6 +182,7 @@ class ContainerTest extends TestCase {
 
         /**
          * Class should now have instances
+         *
          * @var array<class-string, object> $created_instances
          */
         $created_instances = $property_instances->getValue( $container );
@@ -170,6 +195,50 @@ class ContainerTest extends TestCase {
         $this->assertSame( $classDuplicate, $classShared );
         $this->assertEquals( $classShared->value, $classDuplicate->value );
 
+    }
+
+
+
+    public function testConstructorVariable(): void {
+        $container = $this->container->bind( TestClassEInterface::class, function() {
+            $classA = new TestClassA();
+            $classB = new TestClassB( $classA );
+            return new TestClassF( $classB, 'test' );
+        } );
+        $class = $container->create( TestClassEInterface::class );
+        $this->assertTrue( $class->get() );
+    }
+
+
+
+    public function testConstructorVariableEmpty(): void {
+        $container = $this->container->bind( TestClassEInterface::class, function(Container $container): TestClassEInterface {
+            return $container->create( TestClassF::class, [''] );
+        } );
+        $class = $container->create( TestClassEInterface::class );
+        $this->assertFalse( $class->get() );
+    }
+
+
+
+    public function testSharedBinding(): void {
+        $container = $this->container->share( [TestClassEInterface::class] );
+        $container = $container->bind( TestClassEInterface::class, TestClassE::class );
+        $class_1 = $container->create( TestClassEInterface::class );
+        $class_2 = $container->create( TestClassEInterface::class );
+        $this->assertSame( $class_1, $class_2 );
+    }
+
+
+
+    public function testSharedBindingClosure(): void {
+        $container = $this->container->share( [TestClassEInterface::class] );
+        $container = $container->bind( TestClassEInterface::class, function(Container $container) {
+            return $container->create( TestClassF::class, ['test'] );
+        } );
+        $class_1 = $container->create( TestClassEInterface::class );
+        $class_2 = $container->create( TestClassEInterface::class );
+        $this->assertSame( $class_1, $class_2 );
     }
 
 

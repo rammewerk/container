@@ -32,6 +32,7 @@ class Container {
     private array $bindings = [];
 
 
+
     /**
      * Define classes which are shared instances (singleton) - Immutable
      * Remove from instances and cache if already created.
@@ -50,6 +51,7 @@ class Container {
     }
 
 
+
     /**
      * Define bindings / substitutions for classes - Immutable
      *
@@ -61,6 +63,7 @@ class Container {
     public function bind(string $interface, string|Closure $implementation): static {
         return $this->bindings( [$interface => $implementation] );
     }
+
 
 
     /**
@@ -77,29 +80,25 @@ class Container {
     }
 
 
+
     /**
      * Create a fully constructed instance of a class. Using the $args array as class constructor arguments (optional).
      *
      * @template T of object
      *
-     * @param class-string<T> $name The name of the class to instantiate
+     * @param class-string<T> $name   The name of the class to instantiate
      * @param array<int, mixed> $args An array of arguments to be passed to the constructor of class
+     *                                w
      *
      * @return T A fully constructed class instance
      */
-    public function create(string $name, array $args = []): object {
-
-        if( isset( $this->bindings[$name] ) && is_string( $this->bindings[$name] ) ) {
-            /** @phpstan-ignore-next-line - Get the binding instead, if registered */
-            return $this->create( $this->bindings[$name], $args );
+    public function create(string $name, array $args = []) {
+        /** @return T shared instance if set. */
+        if( !empty( $this->instances[$name] ) ) {
+            /** @var T $instance */
+            $instance = $this->instances[$name];
+            return $instance;
         }
-
-        /**
-         * Return shared instance if set.
-         *
-         * @phpstan-ignore-next-line
-         */
-        if( !empty( $this->instances[$name] ) ) return $this->instances[$name];
 
         if( empty( $this->cache[$name] ) ) try {
 
@@ -108,17 +107,22 @@ class Container {
             # Use the class name from ReflectionClass to normalize use of name
             $name = $class->name;
 
-            if( isset( $this->bindings[$name] ) && is_string( $this->bindings[$name] ) ) {
-                /** @phpstan-ignore-next-line - Get the binding instead, if registered */
-                return $this->create( $this->bindings[$name], $args );
+            /** Redo new check for shared instances */
+            if( isset( $this->instances[$name] ) ) {
+                /** @var T $instance */
+                $instance = $this->instances[$name];
+                return $instance;
             }
 
-            /** Redo new check for shared instances
-             *
-             * @phpstan-ignore-next-line
-             */
-            if( !empty( $this->instances[$name] ) ) return $this->instances[$name];
-
+            # Check if class is registered as a binding
+            if( isset( $this->bindings[$name] ) ) {
+                /** @var T $instance */
+                $instance = is_string( $this->bindings[$name] )
+                    ? $this->create( $this->bindings[$name], $args )
+                    : $this->bindings[$name]( $this );
+                if( in_array( $name, $this->shared, true ) ) $this->instances[$name] = $instance;
+                return $instance;
+            }
 
             # Create a closure for creating the object
             if( empty( $this->cache[$name] ) ) $this->cache[$name] = $this->getClosure( $class );
@@ -131,6 +135,7 @@ class Container {
         return $this->cache[$name]( $args );
 
     }
+
 
 
     /**
@@ -166,6 +171,7 @@ class Container {
     }
 
 
+
     /**
      * @template T of object
      *
@@ -179,6 +185,7 @@ class Container {
             return $this->instances[$name] = $closure( $args );
         };
     }
+
 
 
     /**
@@ -248,6 +255,7 @@ class Container {
     }
 
 
+
     /**
      * @param ReflectionParameter[] $parameters
      *
@@ -265,5 +273,6 @@ class Container {
 
         }, $parameters );
     }
+
 
 }
