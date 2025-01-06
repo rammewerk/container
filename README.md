@@ -6,17 +6,16 @@ fully-cached Reflection approach to recursively resolve complex dependencies wit
 
 Designed for PHP 8.4+, it also
 leverages [native lazy objects](https://www.php.net/manual/en/language.oop5.lazy-objects.php) to defer initialization
-until absolutely necessary—boosting
-performance and resource efficiency.
+until absolutely necessary — boosting performance and resource efficiency.
 
-`Key features include:
+#### Key features include:
 
 * **Easy to Use**: Zero-config for basic functions.
 * **Lightweight**: A single PHP file under 200 lines of code, no dependencies.
 * **Immutable Config**: Fluent and predictable setups.
 * **Auto Dependency Resolution**: Less boilerplate, clearer code.
 * **Highly Performant**: Caches reflection data for speed.
-* **Built-In Lazy Loading** Objects only initialize on demand.`
+* **Built-In Lazy Loading** Objects only initialize on demand.
 * **IDE & Tools Friendly**: Thorough docblocks and strict PHPStan checks let IDEs (e.g. PhpStorm) accurately
   autocomplete and hint returned classes.
 
