@@ -66,7 +66,7 @@ class ContainerTest extends TestCase {
      */
     public function testInvalidParameter(): void {
         try {
-            $this->container->create( TestClassC::class );
+            $this->container->create( TestClassC::class )->value;
         } catch( Throwable $e ) {
             $this->assertInstanceOf( TypeError::class, $e );
             return;
@@ -239,6 +239,15 @@ class ContainerTest extends TestCase {
         $class_1 = $container->create( TestClassEInterface::class );
         $class_2 = $container->create( TestClassEInterface::class );
         $this->assertSame( $class_1, $class_2 );
+    }
+
+
+    public function testNotSameInstance(): void {
+        $instance_1 = $this->container->create( TestClassC::class, ['instance_1']);
+        $instance_2 = $this->container->create( TestClassC::class, ['instance_2']);
+        $this->assertSame( 'instance_1', $instance_1->value);
+        $this->assertSame( 'instance_2', $instance_2->value);
+        $this->assertNotSame( $instance_1->value, $instance_2->value);
     }
 
 

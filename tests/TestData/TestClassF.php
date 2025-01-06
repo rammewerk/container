@@ -8,7 +8,10 @@ class TestClassF implements TestClassEInterface {
 
 
 
-    public function __construct(private readonly TestClassB $classB, string $variable) {
+    public function __construct(
+        private readonly TestClassB $classB,
+        string $variable
+    ) {
         $this->init_value = $variable;
     }
 

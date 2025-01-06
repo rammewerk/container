@@ -1,11 +1,11 @@
 services:
   composer:
     image: composer:latest
+    profiles: [composer]
     working_dir: /app
     volumes:
       - .:/app
-    command: install
-    entrypoint: ["/bin/sh", "-c", ""]
+    command: update
 
   php:
     image: dunglas/frankenphp

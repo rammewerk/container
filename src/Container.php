@@ -33,6 +33,12 @@ class Container {
 
 
 
+    public function __construct(
+        private readonly bool $lazyContainer = true
+    ) {}
+
+
+
     /**
      * Define classes which are shared instances (singleton) - Immutable
      * Remove from instances and cache if already created.
@@ -131,6 +137,12 @@ class Container {
             throw new ContainerException( "Unable to reflect class: $name", $e->getCode(), $e );
         }
 
+//        if( $this->lazyContainer ) {
+//            return new ReflectionClass( $name )->newLazyProxy( function($proxy) use ($name, $args) {
+//                return $this->cache[$name]( $args );
+//            } );
+//        }
+
         // Return a fully constructed object of $name
         return $this->cache[$name]( $args );
 
@@ -157,6 +169,15 @@ class Container {
         if( $class->isInterface() ) $closure = static function() {
             throw new InvalidArgumentException( 'Cannot instantiate an interface' );
         };
+
+        # Use lazy version
+
+        else if( $this->lazyContainer ) $closure = static function(array $args) use ($class, $parameters) {
+            return $class->newLazyProxy( static function() use ($class, $parameters, $args) {
+                return $class->newInstance( ...$parameters( $args ) );
+            } );
+        };
+
 
         # Get a closure based on the type of object being created: Shared, normal or without constructor
         # If class has dependencies, call the $parameters closure to generate them based on $args
@@ -273,6 +294,7 @@ class Container {
 
         }, $parameters );
     }
+
 
 
 }
