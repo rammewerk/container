@@ -11,13 +11,14 @@ until absolutely necessary — boosting performance and resource efficiency.
 #### Key features include:
 
 * **Easy to Use**: Zero-config for basic functions.
-* **Lightweight**: A single PHP file under 200 lines of code, no dependencies.
+* **Lightweight**: A single PHP file with less than 300 lines of code, no dependencies.
 * **Immutable Config**: Fluent and predictable setups.
 * **Auto Dependency Resolution**: Less boilerplate, clearer code.
 * **Highly Performant**: Caches reflection data for speed.
 * **Built-In Lazy Loading** Objects only initialize on demand.
 * **IDE & Tools Friendly**: Thorough docblocks and strict PHPStan checks let IDEs (e.g. PhpStorm) accurately
   autocomplete and hint returned classes.
+* **[PSR-11 Support](#psr-11-support)**: PSR-11 ContainerInterface support through an extended adapter.
 
 Installation
 ---------------
@@ -26,6 +27,7 @@ Install this package using [Composer](https://getcomposer.org):
 ```shell
 composer require rammewerk/container
 ```
+
 Requires PHP 8.4 or above.
 
 Container API - using the container
@@ -48,7 +50,7 @@ Here's the API in code:
     public function share(array $classes): static;
     
     // Define how a class should be loaded or be substituted
-    public function bind(string $interface, string|Closure $implementation): static;
+    public function bind(string $abstract, string|Closure $concrete): static;
     
     // Same as bind(), but as an array of interface => implementation.
     public function bindings(array $bindings): static;
@@ -316,12 +318,124 @@ Here, FilesystemLoader needs a template directory (TEMPLATE_DIR), so we define a
 automatically, letting you create or retrieve other dependencies as needed. This way, whenever the container encounters
 Twig\Loader\LoaderInterface, it returns a fully configured FilesystemLoader.
 
+How the Container Resolves Dependencies
+---------------
+
+The container resolves dependencies by processing each constructor parameter in order. It tries to automatically resolve
+parameters when possible, using class types, built-in types, or default values. If needed, you can pass an array of
+arguments to the create() method, and the container will intelligently match each argument to the first compatible
+parameter.
+
+For example, given a class with dependencies:
+
+```php
+public function __construct(
+    ClassA $a,
+    ?int $b,
+    string $c
+) {}
+```
+
+```php
+$container->create(ServiceA::class, ['string-value']);
+```
+
+The container will:
+
+1. Resolve ClassA automatically.
+2. Assign null to the nullable int.
+3. Use 'string-value' for the string parameter.
+
+This is especially useful with bindings defined as closures. Since the closure receives the container, it can call
+create() with custom arguments:
+
+```php
+$container->bind(ClassOrInterface::class, fn(Container $c) => $c->create(Implementation::class, ['string-value', 20]));
+```
+
+This allows custom values to be injected while relying on the container for automatic resolution of other dependencies,
+significantly reducing the amount of logic needed to set up the system. Unlike many other DI containers, which often
+require multiple bindings, factories, or definitions for similar functionality, this approach simplifies the process by
+minimizing the need for extensive manual setup.
+
+This is the processing order that the container uses to resolve dependencies:
+
+1. [Class types](#class-dependencies) (ClassA, ClassB, etc.)
+2. [Built-in types](#built-in-types) (int, string, array, etc.)
+3. [Union types](#union-types) (ClassA|ClassB, ClassC|ClassD, etc.)
+4. [Intersection types](#intersection-types) (ClassA&ClassB, ClassC&ClassD, etc.)
+5. Any [leftover arguments](#unresolved-arguments) are passed as-is, as it may be untyped or not resolved by the
+   container.
+6. [Default values](#default-values) (if available and not anymore arguments)
+
+#### Class dependencies
+
+If the constructor parameter is a class type and an argument matching the type is provided, the container will use that
+argument. If no such argument is provided:
+
+- If a closure binding is defined for the class, the closure will be used to resolve the dependency.
+- If the class type is the container itself, the container instance is returned.
+- Otherwise, an instance of the class will be created unless the parameter allows null, in which case null is returned.
+
+#### Built-in types
+
+If the parameter is a built-in type (int, string, array etc.), the container will search for the first argument that
+matches the built-in type and use it. If no matching argument is found, it continues to the next resolution strategy.
+
+#### Union types
+
+The container handles union types (ClassA|string, ClassB|ClassC, etc.) by searching through the provided arguments and
+returning the first argument that matches any type in the union. This includes both class types and built-in types.
+
+- If the argument matches a class type in the union (e.g., ClassA), it will return that class instance.
+- If the argument matches a built-in type in the union (e.g., string, int), it will return the argument as-is.
+- If no matching argument is found, and the parameter allows null, it will return null.
+
+#### Intersection types
+
+The container will search for the first argument that implements all the required classes or interfaces in the
+intersection type. If no such argument is found, it continues to the next resolution strategy. Intersection types are
+not autowired; use the bind() method to handle them properly.
+
+#### Unresolved arguments
+
+If the parameter has no type hint, the container will use the next available argument as-is.
+
+#### Default values:
+
+If no argument is provided and none of the above strategies resolve the parameter, the container will return the default
+value of the parameter if available. If no default value is defined, null will be returned. This may provoke an error
+if the parameter is required and no argument is provided and isn't nullable. THe container will not be able to resolve
+the dependency.
+
+This approach ensures that the container can handle a wide range of parameter types, including built-in types, union
+types, and intersection types, while offering flexibility for custom bindings through closures.
+
 Exception Handling
 ---------------
 
 The Rammewerk Component Container library uses `Rammewerk\Component\Container\Error\ContainerException` for exceptions
 thrown during the execution. The exceptions provide information about issues such as failing to reflect a class or
 instantiate an interface.
+
+PSR-11 Support
+---------------
+The container supports PSR-11: ContainerInterface through an extended implementation called `PsrContainer`. Since PSR-11
+only defines `get()` and `has()` methods and does not dictate how dependencies should be resolved, we chose not to make
+it
+the default implementation. Including PSR-11 as the default could lead to confusion about how to properly use the
+`create()` method, which offers greater flexibility in resolving dependencies by allowing additional arguments to be
+passed during instantiation ([read more on this below](#how-the-container-resolves-dependencies)).
+
+If you prefer to use the PSR-11 interface, you can do so by using `PsrContainer`, which provides standard `has()` and
+`get()` methods. However, note that this approach requires more explicit setup using the `bind()` method to define how
+dependencies should be resolved.
+
+Note that the `has()` method will most likely always return `true`, since the container doesn't require you to define
+a factory/binding for every class. I would recommend you to view the source code of `PsrContainer` to see how it works.
+
+Both `PsrContainer` and the base `Container` are fully extendable, allowing you to implement your own strategies for
+setting up and managing dependencies as needed.
 
 Contribution
 ---------------

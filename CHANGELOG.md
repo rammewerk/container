@@ -1,6 +1,16 @@
 CHANGELOG
 =========
 
+1.2.0
+---
+
+* Added support for PSR-11 ContainerInterface
+* Added support for union types
+* Added support for intersection types
+* Refactored code to improve readability and maintainability
+* Increased performance
+* A more descriptive README
+
 1.1.0
 ---
 
