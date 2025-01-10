@@ -1,20 +1,22 @@
 Rammewerk Container
 ======================
 
-Rammewerk Container is a minimalist yet powerful dependency injection (DI) container for PHP. It uses an efficient,
-fully-cached Reflection approach to recursively resolve complex dependencies with minimal configuration.
+Rammewerk Container is an elegant, high-performance **dependency injection container** for PHP, designed to simplify
+development with minimal to no configuration. Built exclusively for PHP 8.4+, it embraces modern coding standards and
+avoids legacy baggage.
 
-Designed for PHP 8.4+, it also
-leverages [native lazy objects](https://www.php.net/manual/en/language.oop5.lazy-objects.php) to defer initialization
-until absolutely necessary — boosting performance and resource efficiency.
+With its fully-cached Reflection mechanism and
+[native lazy objects](https://www.php.net/manual/en/language.oop5.lazy-objects.php), it resolves complex
+dependencies efficiently while deferring initialization to boost performance. Proven to be one of the fastest DI
+containers in benchmarks, Rammewerk Container offers a smart, streamlined solution for modern PHP projects.
 
 #### Key features include:
 
 * **Easy to Use**: Zero-config for basic functions.
 * **Lightweight**: A single PHP file with less than 300 lines of code, no dependencies.
 * **Immutable Config**: Fluent and predictable setups.
-* **Auto Dependency Resolution**: Less boilerplate, clearer code.
-* **Highly Performant**: Caches reflection data for speed.
+* **Autowire Dependencies**: Less boilerplate, clearer code.
+* **Highly Performant**: Caches reflection data for speed, proven well in benchmarks
 * **Built-In Lazy Loading** Objects only initialize on demand.
 * **IDE & Tools Friendly**: Thorough docblocks and strict PHPStan checks let IDEs (e.g. PhpStorm) accurately
   autocomplete and hint returned classes.
@@ -28,33 +30,55 @@ Install this package using [Composer](https://getcomposer.org):
 composer require rammewerk/container
 ```
 
-Requires PHP 8.4 or above.
+*Requires PHP 8.4 or above.*
 
-Container API - using the container
+Container API
 ---------------
-Rammewerk Container offers 3 core methods for handling dependencies:
+Rammewerk Container provides three essential methods for managing dependencies:
 
-* **create**: Builds a fully resolved class (auto-wiring), returning a lazy object that initializes only on first use.
-* **share**: Defines shared (singleton) classes, returning the same instance each time. By default, without defining a
-  class as shared it will give you a different instance each time.
-* **bind/bindings**: Maps interfaces or custom setups to specific implementations, allowing fine-tuned control over
-  class loading.
-
-Here's the API in code:
+### Create
 
 ```php
-    // Returns fully resolved class of string $name.
-    public function create(string $name, array $args = []);
-    
-    // Define classes that should share instances - immutable
-    public function share(array $classes): static;
-    
-    // Define how a class should be loaded or be substituted
-    public function bind(string $abstract, string|Closure $concrete): static;
-    
-    // Same as bind(), but as an array of interface => implementation.
-    public function bindings(array $bindings): static;
+$config = $container->create(Config::class);
 ```
+
+Instantiates and auto-wires a fully resolved class. Can also create instances with arguments.
+
+```php
+$config = $container->create(Template::class, [TEMPLATE_DIR]);
+```
+
+### Share (singleton)
+
+Registers shared (singleton) classes, ensuring the same instance is returned on every request. By default,
+instances are not shared unless explicitly defined.
+
+```php
+$container = $container->share([
+    Logger::class, 
+    Config::class
+]);
+```
+
+### Bind
+
+`bind` / `bindings`: Maps interfaces or abstract types to concrete implementations, offering fine-grained control over
+dependency resolution.
+
+```php
+$container = $container->bind(LoggerInterface::class, FileLogger::class);
+
+$container = $container->bindings([
+    CacheInterface::class => RedisCache::class,
+    QueueInterface::class => ClosureQueue::class,
+]);
+
+$container = $container->bind(TemplateResponse::class, static function(Container $c) {
+    return $c->create(TwigTemplate::class, [TEMPLATE_DIR])
+})
+```
+
+*To use PSR-11 container interface, see details at the bottom of this README*
 
 Basic Usage
 ---------------
@@ -180,11 +204,11 @@ class ClassC {
 }
 ```
 
-**Without Lazy Loading** (`new Container(false)`):
+**Without Lazy Loading**
 
 ```php
-$container = new Container(); // IF Container didn't have Lazy loading
-$classC = $container->create(ClassC::class);
+// If the DI does not support lazy proxy:
+$classC = $container->get(ClassC::class);
 echo 'Here we go:';
 $classC->a->hello();
 ```
@@ -199,7 +223,7 @@ Here we go:
 Class A says hello
 ```
 
-**With Lazy Loading** (the default)
+**With Lazy Loading**
 
 ```php
 $container = new Container();
@@ -223,7 +247,7 @@ unless it’s needed—even though it’s declared in ClassC. This boosts effici
 Shared Instances
 ---------------
 
-By default, each call to create() returns a new object:
+By default, each call to create() returns a new instance:
 
 ```php
 $instance1 = $container->create(ClassA::class);
@@ -232,7 +256,7 @@ $instance2 = $container->create(ClassA::class);
 var_dump($instance1 === $instance2); // false
 ```
 
-To make instances shared (singletons), call share():
+To make instances shared (singletons), class name must be defined as shared:
 
 ```php
 // Returns a new container to preserve immutability
@@ -246,15 +270,6 @@ var_dump($instance1 === $instance2); // true
 
 share() takes an array of class names and ensures you get the same instance each time. Because the container is
 immutable, calling share() returns a new container, preventing unwanted side effects.
-
---
-
-A Note on Container Caching
----------------
-Rammewerk Container uses Reflection the first time it encounters a class to map its dependencies. While reflection has a
-cost, it’s still very efficient — and the container caches those results. Next time you request the same class (directly
-or indirectly), Rammewerk container reuses the cached data. This also extends to lazy objects, making it one of the
-fastest DI containers available.
 
 Bindings / Implementations
 ---------------
@@ -413,6 +428,15 @@ Exception Handling
 The Rammewerk Component Container library uses `Rammewerk\Component\Container\Error\ContainerException` for exceptions
 thrown during the execution. The exceptions provide information about issues such as failing to reflect a class or
 instantiate an interface.
+
+A Note on Container Caching
+---------------
+Rammewerk Container uses Reflection the first time it encounters a class to map its dependencies. While reflection has a
+cost, it’s still very efficient — and the container caches those results. Next time you request the same class (directly
+or indirectly), Rammewerk container reuses the cached data. This also extends to lazy objects, making it one of the
+fastest DI containers available.
+
+For benchmark results see: https://github.com/rammewerk/php-di-container-benchmarks
 
 PSR-11 Support
 ---------------
