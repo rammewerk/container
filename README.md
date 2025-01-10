@@ -150,11 +150,7 @@ Understanding the Lazy Object Feature
 
 By default, **Rammewerk Container**
 creates [lazy objects](https://www.php.net/manual/en/language.oop5.lazy-objects.php), meaning classes aren’t initialized
-until you actually use them. You can disable lazy loading like this:
-
-```php
-$container = new Container( lazy: false);
-```
+until you actually use them.
 
 Let's look at an example:
 
@@ -187,7 +183,7 @@ class ClassC {
 **Without Lazy Loading** (`new Container(false)`):
 
 ```php
-$container = new Container(false);
+$container = new Container(); // IF Container didn't have Lazy loading
 $classC = $container->create(ClassC::class);
 echo 'Here we go:';
 $classC->a->hello();

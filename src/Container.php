@@ -53,17 +53,6 @@ class Container {
 
 
     /**
-     * Constructor to configure whether the container should serve lazy proxy objects by default.
-     *
-     * @param bool $lazy Enable lazy proxies (default: true).
-     */
-    public function __construct(
-        private readonly bool $lazy = true,
-    ) {}
-
-
-
-    /**
      * Registers class names as singletons (immutable).
      *
      * @param class-string[] $classes
@@ -190,7 +179,7 @@ class Container {
 
 
     /**
-     * Returns a closure to instantiate $class (with optional lazy-proxy).
+     * Returns a closure to instantiate $class
      *
      * @template T of object
      * @param ReflectionClass<T> $class
@@ -202,16 +191,11 @@ class Container {
         $constructor = $class->getConstructor();
 
         if( is_null( $constructor ) ) {
-            return ($this->lazy)
-                ? static fn() => $class->newLazyProxy( static fn() => $class->newInstance() )
-                : static fn() => $class->newInstance();
+            return static fn() => $class->newInstance();
         }
 
         $param = $this->getParameters( $constructor );
-
-        return ($this->lazy)
-            ? static fn(array $a) => $class->newLazyProxy( static fn() => $class->newInstance( ...$param( $a ) ) )
-            : static fn(array $a) => $class->newInstance( ...$param( $a ) );
+        return static fn(array $a) => $class->newLazyProxy( static fn() => $class->newInstance( ...$param( $a ) ) );
 
     }
 
