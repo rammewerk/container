@@ -153,7 +153,7 @@ creates [lazy objects](https://www.php.net/manual/en/language.oop5.lazy-objects.
 until you actually use them. You can disable lazy loading like this:
 
 ```php
-$container = new Container(false);
+$container = new Container( lazy: false);
 ```
 
 Let's look at an example:
