@@ -39,7 +39,7 @@ class Container {
     /**
      * List of registered singletons.
      *
-     * @var array<class-string, int>
+     * @var array<class-string, true>
      */
     protected array $shared = [];
 
@@ -62,8 +62,8 @@ class Container {
      */
     public function share(array $classes): static {
         $container = clone $this;
-        $container->shared = array_merge($container->shared, array_flip($classes));
         foreach ($classes as $key) {
+            $container->shared[$key] = true;
             unset($container->cache[$key]);
         }
         return $container;
@@ -109,10 +109,9 @@ class Container {
      */
     public function bindings(array $bindings): static {
         $container = clone $this;
-        $container->bindings = array_merge($container->bindings, $bindings);
-        // Remove any cached reflection for updated keys
-        foreach (array_keys($bindings) as $key) {
-            unset($container->cache[$key], $container->instances[$key]);
+        foreach ($bindings as $abstract => $concrete) {
+            $container->bindings[$abstract] = $concrete;
+            unset($container->cache[$abstract], $container->instances[$abstract]);
         }
         return $container;
     }
