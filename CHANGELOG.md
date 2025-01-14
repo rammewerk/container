@@ -1,6 +1,24 @@
 CHANGELOG
 =========
 
+1.2.3
+---
+
+- Improved performance assigning shared and bindings.
+- Improved performance resolving constructor parameters.
+- Better caching mechanism for constructor parameters.
+
+1.2.2
+---
+
+- Container will call class without arguments if empty constructor is defined.
+- Better performance
+
+1.2.1
+---
+Removed optional lazy container, now always lazy In benchmark tests, we see no reason to not use lazy container. It only
+improves performance when using the container. No side effects has been found.
+
 1.2.0
 ---
 

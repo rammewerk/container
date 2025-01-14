@@ -5,11 +5,11 @@ namespace Rammewerk\Component\Container;
 use Closure;
 use ReflectionClass;
 use ReflectionIntersectionType;
-use ReflectionMethod;
 use ReflectionException;
 use ReflectionNamedType;
 use Rammewerk\Component\Container\Error\ContainerException;
 use ReflectionParameter;
+use ReflectionUnionType;
 
 /**
  * A lightweight Dependency Injection Container.
@@ -209,7 +209,7 @@ class Container {
     /**
      * Creates a closure that resolves constructor parameters using $args and container bindings.
      *
-     * @param ReflectionMethod $method
+     * @param array<array{0: string|null, 1: string[], 2: string[], 3: string[], 4: bool, 5: mixed}> $paramInfo
      *
      * @return Closure(array<mixed>): array<mixed>
      */
@@ -220,19 +220,20 @@ class Container {
             return array_map(function ($info) use (&$args) {
 
                 /**
-                 * @var ReflectionParameter $parameter
                  * @var class-string $className
                  * @var string[] $builtInTypes
                  * @var class-string[] $unionClasses
                  * @var class-string[] $interSectionClasses
+                 * @var bool $nullable
+                 * @var mixed $default
                  */
-                [$parameter, $className, $builtInTypes, $unionClasses, $interSectionClasses] = $info;
+                [$className, $builtInTypes, $unionClasses, $interSectionClasses, $nullable, $default] = $info;
 
                 if ($className) {
 
                     // Return argument matching the class type or null if allowed
                     foreach ($args as $i => $arg) {
-                        if ($arg instanceof $className || ($arg === null && $parameter->allowsNull())) {
+                        if ($arg instanceof $className || ($arg === null && $nullable)) {
                             return array_splice($args, $i, 1)[0];
                         }
                     }
@@ -249,7 +250,7 @@ class Container {
                     }
 
                     // Create an instance of the class or return null if the parameter allows null
-                    return $parameter->allowsNull() ? null : $this->create($className);
+                    return $nullable ? null : $this->create($className);
                 }
 
                 // Match and return the first argument that matches a built-in type
@@ -266,7 +267,7 @@ class Container {
                 // Match and return the first argument that matches any class in the union type or null if allowed
                 foreach ($unionClasses as $unionClassName) {
                     foreach ($args as $i => $arg) {
-                        if ($arg instanceof $unionClassName || ($arg === null && $parameter->allowsNull())) {
+                        if ($arg instanceof $unionClassName || ($arg === null && $nullable)) {
                             return array_splice($args, $i, 1)[0];
                         }
                     }
@@ -294,7 +295,7 @@ class Container {
                 }
 
                 // Serve the default value if available, otherwise return null (no arguments left)
-                return $parameter->isDefaultValueAvailable() ? $parameter->getDefaultValue() : null;
+                return $default;
 
             }, $paramInfo);
         };
@@ -314,15 +315,16 @@ class Container {
      * - Intersection classes (multiple classes combined by `&`)
      *
      * Each parameter's information is returned as an array with the following structure:
-     * - [0]: The original `ReflectionParameter` instance.
-     * - [1]: `string|null` — The class-string if it's a single class type, otherwise `null`.
-     * - [2]: `string[]` — An array of built-in types (e.g., `'int'`, `'string'`).
-     * - [3]: `string[]` — An array of class-string from union types.
-     * - [4]: `string[]` — An array of class-string from intersection types.
+     * - [0]: `string|null` — The class-string if it's a single class type, otherwise `null`.
+     * - [1]: `string[]` — An array of built-in types (e.g., `'int'`, `'string'`).
+     * - [2]: `string[]` — An array of class-string from union types.
+     * - [3]: `string[]` — An array of class-string from intersection types.
+     * - [4]: `bool` — Whether the parameter is nullable.
+     * - [5]: `mixed` — The default value of the parameter, if available.
      *
      * @param ReflectionParameter[] $parameters An array of reflection parameters from a constructor.
      *
-     * @return array<array{0: ReflectionParameter, 1: string|null, 2: string[], 3: string[], 4: string[]}>
+     * @return array<array{0: string|null, 1: string[], 2: string[], 3: string[], 4: bool, 5: mixed}>
      */
     private function parseParameterInfo(array $parameters): array {
         return array_map(
@@ -330,14 +332,20 @@ class Container {
 
                 $reflectionType = $parameter->getType();
 
+                try {
+                    $default = $parameter->isDefaultValueAvailable() ? $parameter->getDefaultValue() : null;
+                } catch (ReflectionException $e) {
+                    throw new ContainerException('Unable to get default value for parameter: ' . $parameter->getName(), 0, $e);
+                }
+
                 // Return early if the parameter is a single class
                 if ($reflectionType instanceof ReflectionNamedType && !$reflectionType->isBuiltIn()) {
-                    return [$parameter, $reflectionType->getName(), [], [], []];
+                    return [$reflectionType->getName(), [], [], [], $parameter->allowsNull(), $default];
                 }
 
                 // Return early if the parameter is a single built-in type
                 if ($reflectionType instanceof ReflectionNamedType) {
-                    return [$parameter, null, [$reflectionType->getName()], [], []];
+                    return [null, [$reflectionType->getName()], [], [], $parameter->allowsNull(), $default];
                 }
 
                 // Handle union types and intersection types
@@ -347,7 +355,7 @@ class Container {
 
                 $reflectionIntersectionTypes = [];
 
-                if ($reflectionType instanceof \ReflectionUnionType) {
+                if ($reflectionType instanceof ReflectionUnionType) {
                     foreach ($reflectionType->getTypes() as $reflectionUnionType) {
                         if ($reflectionUnionType instanceof ReflectionIntersectionType) {
                             $reflectionIntersectionTypes = array_merge($reflectionUnionType->getTypes());
@@ -370,7 +378,7 @@ class Container {
                     );
                 }
 
-                return [$parameter, null, $builtInTypes, $unionClasses, $interSectionClasses];
+                return [null, $builtInTypes, $unionClasses, $interSectionClasses, $parameter->allowsNull(), $default];
 
             }, $parameters);
     }
