@@ -4,8 +4,7 @@ namespace Rammewerk\Component\Container;
 
 use Psr\Container\ContainerInterface;
 
-class PsrContainer extends Container implements ContainerInterface
-{
+class PsrContainer extends Container implements ContainerInterface {
 
 
 
@@ -15,9 +14,8 @@ class PsrContainer extends Container implements ContainerInterface
      *
      * @return T
      */
-    public function get(string $id)
-    {
-        return $this->create($id);
+    public function get(string $id) {
+        return $this->instances[$id] ?? $this->create($id);
     }
 
 
@@ -27,8 +25,7 @@ class PsrContainer extends Container implements ContainerInterface
      * As this container will automatically resolve class-strings it will
      * result in true as long as binding is defined and class exist.
      */
-    public function has(string $id): bool
-    {
+    public function has(string $id): bool {
         if (isset($this->bindings[$id])) {
             return true;
         }

@@ -62,9 +62,9 @@ class Container {
      */
     public function share(array $classes): static {
         $container = clone $this;
-        $container->shared = array_merge( $container->shared, array_flip( $classes ) );
-        foreach( $classes as $key ) {
-            unset( $container->cache[$key] );
+        $container->shared = array_merge($container->shared, array_flip($classes));
+        foreach ($classes as $key) {
+            unset($container->cache[$key]);
         }
         return $container;
     }
@@ -87,7 +87,7 @@ class Container {
      * @immutable
      */
     public function bind(string $abstract, string|Closure $concrete): static {
-        return $this->bindings( [$abstract => $concrete] );
+        return $this->bindings([$abstract => $concrete]);
     }
 
 
@@ -109,10 +109,10 @@ class Container {
      */
     public function bindings(array $bindings): static {
         $container = clone $this;
-        $container->bindings = array_merge( $container->bindings, $bindings );
+        $container->bindings = array_merge($container->bindings, $bindings);
         // Remove any cached reflection for updated keys
-        foreach( array_keys( $bindings ) as $key ) {
-            unset( $container->cache[$key], $container->instances[$key] );
+        foreach (array_keys($bindings) as $key) {
+            unset($container->cache[$key], $container->instances[$key]);
         }
         return $container;
     }
@@ -132,46 +132,46 @@ class Container {
     public function create(string $name, array $args = []) {
 
         /** Return shared instance (singleton) if exist  */
-        if( isset( $this->instances[$name] ) ) {
+        if (isset($this->instances[$name])) {
             return $this->instances[$name]; // @phpstan-ignore-line
         }
 
-        if( isset( $this->cache[$name] ) ) {
-            return $this->cache[$name]( $args ); // @phpstan-ignore-line
+        if (isset($this->cache[$name])) {
+            return $this->cache[$name]($args); // @phpstan-ignore-line
         }
 
         /** Handle binding if defined */
-        if( isset( $this->bindings[$name] ) ) {
+        if (isset($this->bindings[$name])) {
             /** @var T $instance */
-            $instance = is_string( $this->bindings[$name] )
-                ? $this->create( $this->bindings[$name], $args )
-                : $this->bindings[$name]( $this );
+            $instance = is_string($this->bindings[$name])
+                ? $this->create($this->bindings[$name], $args)
+                : $this->bindings[$name]($this);
 
-            return isset( $this->shared[$name] )
+            return isset($this->shared[$name])
                 ? $this->instances[$name] = $instance
                 : $instance;
         }
 
 
         try {
-            $class = new ReflectionClass( $name );
+            $class = new ReflectionClass($name);
 
-            if( $class->isInterface() ) {
-                throw new ContainerException( 'Cannot instantiate an interface without bindings' );
+            if ($class->isInterface()) {
+                throw new ContainerException('Cannot instantiate an interface without bindings');
             }
 
             /** @var Closure(mixed[]):T $cache */
-            $cache = $this->getClosure( $class );
+            $cache = $this->getClosure($class);
 
-            if( isset( $this->shared[$name] ) ) {
-                return $this->instances[$name] = $cache( $args );
+            if (isset($this->shared[$name])) {
+                return $this->instances[$name] = $cache($args);
             }
 
             $this->cache[$name] = $cache;
-            return $cache( $args );
+            return $cache($args);
 
-        } catch( ReflectionException $e ) {
-            throw new ContainerException( "Unable to reflect class: $name", $e->getCode(), $e );
+        } catch (ReflectionException $e) {
+            throw new ContainerException("Unable to reflect class: $name", $e->getCode(), $e);
         }
 
     }
@@ -190,12 +190,18 @@ class Container {
 
         $constructor = $class->getConstructor();
 
-        if( is_null( $constructor ) ) {
+        if (is_null($constructor)) {
             return static fn() => $class->newInstance();
         }
 
-        $param = $this->getParameters( $constructor );
-        return static fn(array $a) => $class->newLazyProxy( static fn() => $class->newInstance( ...$param( $a ) ) );
+        $params = $constructor->getParameters();
+
+        if (empty($params)) {
+            return static fn() => $class->newInstance();
+        }
+
+        $param = $this->getParameters($this->parseParameterInfo($params));
+        return static fn(array $a) => $class->newLazyProxy(static fn() => $class->newInstance(...$param($a)));
 
     }
 
@@ -208,13 +214,11 @@ class Container {
      *
      * @return Closure(array<mixed>): array<mixed>
      */
-    private function getParameters(ReflectionMethod $method): Closure {
-
-        $paramInfo = $this->parseParameterInfo( $method->getParameters() );
+    private function getParameters(array $paramInfo): Closure {
 
         # Return a closure that uses the cached information to generate the arguments for the method
-        return function(array $args) use ($paramInfo): array {
-            return array_map( function($info) use (&$args) {
+        return function (array $args) use ($paramInfo): array {
+            return array_map(function ($info) use (&$args) {
 
                 /**
                  * @var ReflectionParameter $parameter
@@ -225,46 +229,46 @@ class Container {
                  */
                 [$parameter, $className, $builtInTypes, $unionClasses, $interSectionClasses] = $info;
 
-                if( $className ) {
+                if ($className) {
 
                     // Return argument matching the class type or null if allowed
-                    foreach( $args as $i => $arg ) {
-                        if( $arg instanceof $className || ($arg === null && $parameter->allowsNull()) ) {
-                            return array_splice( $args, $i, 1 )[0];
+                    foreach ($args as $i => $arg) {
+                        if ($arg instanceof $className || ($arg === null && $parameter->allowsNull())) {
+                            return array_splice($args, $i, 1)[0];
                         }
                     }
 
                     // Return binding if a closure is defined for the class
                     // Use closure if defined, even if the parameter is nullable
-                    if( isset( $this->bindings[$className] ) && $this->bindings[$className] instanceof Closure ) {
-                        return $this->bindings[$className]( $this );
+                    if (isset($this->bindings[$className]) && $this->bindings[$className] instanceof Closure) {
+                        return $this->bindings[$className]($this);
                     }
 
                     // Return container instance if the class is this container
-                    if( $className === static::class ) {
+                    if ($className === static::class) {
                         return $this;
                     }
 
                     // Create an instance of the class or return null if the parameter allows null
-                    return $parameter->allowsNull() ? null : $this->create( $className );
+                    return $parameter->allowsNull() ? null : $this->create($className);
                 }
 
                 // Match and return the first argument that matches a built-in type
-                foreach( $builtInTypes as $type ) {
+                foreach ($builtInTypes as $type) {
                     $checkFn = 'is_' . $type;
-                    foreach( $args as $i => $arg ) {
-                        if( function_exists( $checkFn ) && $checkFn( $arg ) ) {
-                            return array_splice( $args, $i, 1 )[0];
+                    foreach ($args as $i => $arg) {
+                        if (function_exists($checkFn) && $checkFn($arg)) {
+                            return array_splice($args, $i, 1)[0];
                         }
                     }
                 }
 
 
                 // Match and return the first argument that matches any class in the union type or null if allowed
-                foreach( $unionClasses as $unionClassName ) {
-                    foreach( $args as $i => $arg ) {
-                        if( $arg instanceof $unionClassName || ($arg === null && $parameter->allowsNull()) ) {
-                            return array_splice( $args, $i, 1 )[0];
+                foreach ($unionClasses as $unionClassName) {
+                    foreach ($args as $i => $arg) {
+                        if ($arg instanceof $unionClassName || ($arg === null && $parameter->allowsNull())) {
+                            return array_splice($args, $i, 1)[0];
                         }
                     }
                 }
@@ -272,28 +276,28 @@ class Container {
 
                 // Handle intersection types by finding and returning the first argument that implements all required
                 // classes or interfaces in the intersection type
-                foreach( $args as $i => $arg ) {
+                foreach ($args as $i => $arg) {
                     $matchesAll = true; // Check if $arg implements all intersection type classes
-                    foreach( $interSectionClasses as $interSectionClassName ) {
-                        if( !($arg instanceof $interSectionClassName) ) {
+                    foreach ($interSectionClasses as $interSectionClassName) {
+                        if (!($arg instanceof $interSectionClassName)) {
                             $matchesAll = false;
                             break;
                         }
                     }
-                    if( $matchesAll ) {
-                        return array_splice( $args, $i, 1 )[0];
+                    if ($matchesAll) {
+                        return array_splice($args, $i, 1)[0];
                     }
                 }
 
                 // Serve the next argument as-is, since the parameter may be untyped
-                if( $args ) {
-                    return array_shift( $args );
+                if ($args) {
+                    return array_shift($args);
                 }
 
                 // Serve the default value if available, otherwise return null (no arguments left)
                 return $parameter->isDefaultValueAvailable() ? $parameter->getDefaultValue() : null;
 
-            }, $paramInfo );
+            }, $paramInfo);
         };
     }
 
@@ -323,17 +327,17 @@ class Container {
      */
     private function parseParameterInfo(array $parameters): array {
         return array_map(
-            static function(ReflectionParameter $parameter): array {
+            static function (ReflectionParameter $parameter): array {
 
                 $reflectionType = $parameter->getType();
 
                 // Return early if the parameter is a single class
-                if( $reflectionType instanceof ReflectionNamedType && !$reflectionType->isBuiltIn() ) {
+                if ($reflectionType instanceof ReflectionNamedType && !$reflectionType->isBuiltIn()) {
                     return [$parameter, $reflectionType->getName(), [], [], []];
                 }
 
                 // Return early if the parameter is a single built-in type
-                if( $reflectionType instanceof ReflectionNamedType ) {
+                if ($reflectionType instanceof ReflectionNamedType) {
                     return [$parameter, null, [$reflectionType->getName()], [], []];
                 }
 
@@ -344,11 +348,11 @@ class Container {
 
                 $reflectionIntersectionTypes = [];
 
-                if( $reflectionType instanceof \ReflectionUnionType ) {
-                    foreach( $reflectionType->getTypes() as $reflectionUnionType ) {
-                        if( $reflectionUnionType instanceof ReflectionIntersectionType ) {
-                            $reflectionIntersectionTypes = array_merge( $reflectionUnionType->getTypes() );
-                        } else if( $reflectionUnionType->isBuiltIn() ) {
+                if ($reflectionType instanceof \ReflectionUnionType) {
+                    foreach ($reflectionType->getTypes() as $reflectionUnionType) {
+                        if ($reflectionUnionType instanceof ReflectionIntersectionType) {
+                            $reflectionIntersectionTypes = array_merge($reflectionUnionType->getTypes());
+                        } else if ($reflectionUnionType->isBuiltIn()) {
                             $builtInTypes[] = $reflectionUnionType->getName();
                         } else {
                             $unionClasses[] = $reflectionUnionType->getName();
@@ -356,20 +360,20 @@ class Container {
                     }
                 }
 
-                if( $reflectionType instanceof ReflectionIntersectionType ) {
-                    $reflectionIntersectionTypes = array_merge( $reflectionType->getTypes() );
+                if ($reflectionType instanceof ReflectionIntersectionType) {
+                    $reflectionIntersectionTypes = array_merge($reflectionType->getTypes());
                 }
 
-                if( $reflectionIntersectionTypes ) {
+                if ($reflectionIntersectionTypes) {
                     $interSectionClasses = array_map(
                         static fn(ReflectionNamedType $type) => $type->getName(), // @phpstan-ignore-line - is always a ReflectionNamedType
-                        $reflectionIntersectionTypes
+                        $reflectionIntersectionTypes,
                     );
                 }
 
                 return [$parameter, null, $builtInTypes, $unionClasses, $interSectionClasses];
 
-            }, $parameters );
+            }, $parameters);
     }
 
 
