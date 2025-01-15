@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+1.2.4
+---
+
+- Final improvements to performance for constructor parameters.
+
 1.2.3
 ---
 
