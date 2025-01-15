@@ -61,12 +61,12 @@ class Container {
      * @immutable
      */
     public function share(array $classes): static {
-        $container = clone $this;
-        foreach ($classes as $key) {
-            $container->shared[$key] = true;
-            unset($container->cache[$key]);
+        $c = clone $this;
+        foreach ($classes as $name) {
+            $c->shared[$name] = true;
+            unset($c->cache[$name]);
         }
-        return $container;
+        return $c;
     }
 
 
@@ -108,12 +108,12 @@ class Container {
      * @immutable
      */
     public function bindings(array $bindings): static {
-        $container = clone $this;
-        foreach ($bindings as $abstract => $concrete) {
-            $container->bindings[$abstract] = $concrete;
-            unset($container->cache[$abstract], $container->instances[$abstract]);
+        $c = clone $this;
+        foreach ($bindings as $a => $concrete) {
+            $c->bindings[$a] = $concrete;
+            unset($c->cache[$a], $c->instances[$a]);
         }
-        return $container;
+        return $c;
     }
 
 
@@ -146,28 +146,28 @@ class Container {
                 ? $this->create($this->bindings[$name], $args)
                 : $this->bindings[$name]($this);
 
-            return isset($this->shared[$name])
-                ? $this->instances[$name] = $instance
-                : $instance;
+            return isset($this->shared[$name]) ? $this->instances[$name] = $instance : $instance;
         }
-
 
         try {
             $class = new ReflectionClass($name);
 
             if ($class->isInterface()) {
-                throw new ContainerException('Cannot instantiate an interface without bindings');
+                throw new ContainerException(
+                    "Cannot instantiate interface '{$class->getName()}' without a concrete implementation or binding in the container.",
+                );
             }
 
-            /** @var Closure(mixed[]):T $cache */
-            $cache = $this->getClosure($class);
+            $params = $class->getConstructor()?->getParameters();
+
+            $closure = empty($params) ? static fn() => new $name() : $this->getClosure($class, $params);
 
             if (isset($this->shared[$name])) {
-                return $this->instances[$name] = $cache($args);
+                return $this->instances[$name] = $closure($args);
             }
 
-            $this->cache[$name] = $cache;
-            return $cache($args);
+            $this->cache[$name] = $closure;
+            return $closure($args);
 
         } catch (ReflectionException $e) {
             throw new ContainerException("Unable to reflect class: $name", $e->getCode(), $e);
@@ -182,25 +182,82 @@ class Container {
      *
      * @template T of object
      * @param ReflectionClass<T> $class
+     * @param ReflectionParameter[] $params
      *
-     * @return Closure
+     * @return Closure(mixed[]):T
      */
-    private function getClosure(ReflectionClass $class): Closure {
+    private function getClosure(ReflectionClass $class, array $params): Closure {
+        $paramClosure = $this->resolveParams($this->parseParameters($params));
+        /** @phpstan-ignore-next-line */
+        return static fn(array $a) => $class->newLazyProxy(static fn() => $class->newInstance(...$paramClosure($a)));
+    }
 
-        $constructor = $class->getConstructor();
 
-        if (is_null($constructor)) {
-            return static fn() => $class->newInstance();
+
+    /**
+     * Extracts and caches detailed information about constructor parameters, including class types,
+     * built-in types, union types, and intersection types.
+     *
+     * This method uses closures to cache reflection data, minimizing the performance overhead
+     * of repeatedly calling reflection APIs. It handles various parameter types such as:
+     * - Named classes
+     * - Built-in types
+     * - Union types (multiple types separated by `|`)
+     * - Intersection classes (multiple classes combined by `&`)
+     *
+     * Each parameter's information is returned as an array with the following structure:
+     * - [0]: `string|null` — The class-string if it's a single class type, otherwise `null`.
+     * - [1]: `string[]` — An array of built-in types (e.g., `'int'`, `'string'`).
+     * - [2]: `string[]` — An array of class-string from union types.
+     * - [3]: `string[]` — An array of class-string from intersection types.
+     * - [4]: `bool` — Whether the parameter is nullable.
+     * - [5]: `mixed` — The default value of the parameter, if available.
+     *
+     * @param ReflectionParameter[] $parameters An array of reflection parameters from a constructor.
+     *
+     * @return array<array{0: string|null, 1: string[], 2: string[], 3: string[], 4: bool, 5: mixed}>
+     */
+    private function parseParameters(array $parameters): array {
+
+        $paramsInfo = [];
+
+        foreach ($parameters as $parameter) {
+
+            $info = [null, [], [], [], $parameter->allowsNull(), $parameter->isDefaultValueAvailable() ? $parameter->getDefaultValue() : null];
+
+            $type = $parameter->getType();
+
+            if ($type instanceof ReflectionNamedType) {
+                if (!$type->isBuiltIn()) {
+                    $info[0] = $type->getName();
+                } else {
+                    $info[1][] = $type->getName();
+                }
+            } else if ($type instanceof ReflectionUnionType) {
+                foreach ($type->getTypes() as $unionType) {
+                    if ($unionType instanceof ReflectionIntersectionType) {
+                        foreach ($unionType->getTypes() as $i) {
+                            /** @var ReflectionNamedType $i */
+                            $info[3][] = $i->getName();
+                        }
+                    } else if ($unionType->isBuiltIn()) {
+                        $info[1][] = $unionType->getName();
+                    } else {
+                        $info[2][] = $unionType->getName();
+                    }
+                }
+            } else if ($type instanceof ReflectionIntersectionType) {
+                foreach ($type->getTypes() as $i) {
+                    /** @var ReflectionNamedType $i */
+                    $info[3][] = $i->getName();
+                }
+            }
+
+            $paramsInfo[] = $info;
+
         }
 
-        $params = $constructor->getParameters();
-
-        if (empty($params)) {
-            return static fn() => $class->newInstance();
-        }
-
-        $param = $this->getParameters($this->parseParameterInfo($params));
-        return static fn(array $a) => $class->newLazyProxy(static fn() => $class->newInstance(...$param($a)));
+        return $paramsInfo;
 
     }
 
@@ -213,7 +270,7 @@ class Container {
      *
      * @return Closure(array<mixed>): array<mixed>
      */
-    private function getParameters(array $paramInfo): Closure {
+    private function resolveParams(array $paramInfo): Closure {
 
         # Return a closure that uses the cached information to generate the arguments for the method
         return function (array $args) use ($paramInfo): array {
@@ -223,11 +280,11 @@ class Container {
                  * @var class-string $className
                  * @var string[] $builtInTypes
                  * @var class-string[] $unionClasses
-                 * @var class-string[] $interSectionClasses
+                 * @var class-string[] $intersects
                  * @var bool $nullable
                  * @var mixed $default
                  */
-                [$className, $builtInTypes, $unionClasses, $interSectionClasses, $nullable, $default] = $info;
+                [$className, $builtInTypes, $unionClasses, $intersects, $nullable, $default] = $info;
 
                 if ($className) {
 
@@ -277,110 +334,20 @@ class Container {
                 // Handle intersection types by finding and returning the first argument that implements all required
                 // classes or interfaces in the intersection type
                 foreach ($args as $i => $arg) {
-                    $matchesAll = true; // Check if $arg implements all intersection type classes
-                    foreach ($interSectionClasses as $interSectionClassName) {
-                        if (!($arg instanceof $interSectionClassName)) {
-                            $matchesAll = false;
-                            break;
+                    foreach ($intersects as $ic) {
+                        if (!($arg instanceof $ic)) {
+                            continue 2;
                         }
                     }
-                    if ($matchesAll) {
-                        return array_splice($args, $i, 1)[0];
-                    }
+                    return array_splice($args, $i, 1)[0];
                 }
 
                 // Serve the next argument as-is, since the parameter may be untyped
-                if ($args) {
-                    return array_shift($args);
-                }
-
-                // Serve the default value if available, otherwise return null (no arguments left)
-                return $default;
+                // Or serve the default value if available, otherwise return null (no arguments left)
+                return $args ? array_shift($args) : $default;
 
             }, $paramInfo);
         };
-    }
-
-
-
-    /**
-     * Extracts and caches detailed information about constructor parameters, including class types,
-     * built-in types, union types, and intersection types.
-     *
-     * This method uses closures to cache reflection data, minimizing the performance overhead
-     * of repeatedly calling reflection APIs. It handles various parameter types such as:
-     * - Named classes
-     * - Built-in types
-     * - Union types (multiple types separated by `|`)
-     * - Intersection classes (multiple classes combined by `&`)
-     *
-     * Each parameter's information is returned as an array with the following structure:
-     * - [0]: `string|null` — The class-string if it's a single class type, otherwise `null`.
-     * - [1]: `string[]` — An array of built-in types (e.g., `'int'`, `'string'`).
-     * - [2]: `string[]` — An array of class-string from union types.
-     * - [3]: `string[]` — An array of class-string from intersection types.
-     * - [4]: `bool` — Whether the parameter is nullable.
-     * - [5]: `mixed` — The default value of the parameter, if available.
-     *
-     * @param ReflectionParameter[] $parameters An array of reflection parameters from a constructor.
-     *
-     * @return array<array{0: string|null, 1: string[], 2: string[], 3: string[], 4: bool, 5: mixed}>
-     */
-    private function parseParameterInfo(array $parameters): array {
-        return array_map(
-            static function (ReflectionParameter $parameter): array {
-
-                $reflectionType = $parameter->getType();
-
-                try {
-                    $default = $parameter->isDefaultValueAvailable() ? $parameter->getDefaultValue() : null;
-                } catch (ReflectionException $e) {
-                    throw new ContainerException('Unable to get default value for parameter: ' . $parameter->getName(), 0, $e);
-                }
-
-                // Return early if the parameter is a single class
-                if ($reflectionType instanceof ReflectionNamedType && !$reflectionType->isBuiltIn()) {
-                    return [$reflectionType->getName(), [], [], [], $parameter->allowsNull(), $default];
-                }
-
-                // Return early if the parameter is a single built-in type
-                if ($reflectionType instanceof ReflectionNamedType) {
-                    return [null, [$reflectionType->getName()], [], [], $parameter->allowsNull(), $default];
-                }
-
-                // Handle union types and intersection types
-                $builtInTypes = [];
-                $unionClasses = [];
-                $interSectionClasses = [];
-
-                $reflectionIntersectionTypes = [];
-
-                if ($reflectionType instanceof ReflectionUnionType) {
-                    foreach ($reflectionType->getTypes() as $reflectionUnionType) {
-                        if ($reflectionUnionType instanceof ReflectionIntersectionType) {
-                            $reflectionIntersectionTypes = array_merge($reflectionUnionType->getTypes());
-                        } else if ($reflectionUnionType->isBuiltIn()) {
-                            $builtInTypes[] = $reflectionUnionType->getName();
-                        } else {
-                            $unionClasses[] = $reflectionUnionType->getName();
-                        }
-                    }
-                }
-
-                if ($reflectionType instanceof ReflectionIntersectionType) {
-                    $reflectionIntersectionTypes = array_merge($reflectionType->getTypes());
-                }
-
-                if ($reflectionIntersectionTypes) {
-                    $interSectionClasses = array_map(
-                        static fn(ReflectionNamedType $type) => $type->getName(), // @phpstan-ignore-line - is always a ReflectionNamedType
-                        $reflectionIntersectionTypes,
-                    );
-                }
-
-                return [null, $builtInTypes, $unionClasses, $interSectionClasses, $parameter->allowsNull(), $default];
-
-            }, $parameters);
     }
 
 
