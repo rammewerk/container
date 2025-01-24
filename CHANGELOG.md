@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+1.2.5
+---
+
+- Added support for binding a concrete instance `bind(string $abstract, new ConcreteInstance())`
+
 1.2.4
 ---
 

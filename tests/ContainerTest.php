@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rammewerk\Component\Container\Tests;
 
 use Closure;
@@ -258,6 +260,14 @@ class ContainerTest extends TestCase {
         $class = $container->get(TestClassA::class);
         $this->assertInstanceOf(TestClassA::class, $class);
         $this->assertSame(true, $container->has(TestClassA::class));
+    }
+
+
+
+    public function testBindingOfInstance(): void {
+        $container = $this->container->bind(TestClassEInterface::class, new TestClassE());
+        $class = $container->create(TestClassEInterface::class);
+        $this->assertInstanceOf(TestClassE::class, $class);
     }
 
 

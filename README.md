@@ -66,7 +66,10 @@ $container = $container->share([
 dependency resolution.
 
 ```php
+// Bind an interface and let the container handle the construction of the concrete class
 $container = $container->bind(LoggerInterface::class, FileLogger::class);
+// Bind an interface, but create the concrete class yourself
+$container = $container->bind(LoggerInterface::class, new Logger());
 
 $container = $container->bindings([
     CacheInterface::class => RedisCache::class,
@@ -76,6 +79,8 @@ $container = $container->bindings([
 $container = $container->bind(TemplateResponse::class, static function(Container $c) {
     return $c->create(TwigTemplate::class, [TEMPLATE_DIR])
 })
+
+
 ```
 
 *To use PSR-11 container interface, see details at the bottom of this README*

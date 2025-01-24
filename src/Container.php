@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rammewerk\Component\Container;
 
 use Closure;
@@ -80,13 +82,13 @@ class Container {
      *
      * Returns an immutable instance with the updated bindings.
      *
-     * @param class-string $abstract                        The abstract type to bind (interface, abstract class, or class).
-     * @param class-string|Closure(static):object $concrete The concrete implementation or factory closure.
+     * @param class-string $abstract        The abstract type to bind (interface, abstract class, or class).
+     * @param class-string|object $concrete The concrete implementation or factory closure.
      *
      * @return static
      * @immutable
      */
-    public function bind(string $abstract, string|Closure $concrete): static {
+    public function bind(string $abstract, string|object $concrete): static {
         return $this->bindings([$abstract => $concrete]);
     }
 
@@ -102,7 +104,7 @@ class Container {
      * This is a batch version of the {@see bind()} method, allowing multiple bindings to be defined
      * in a single call. Returns an immutable instance with the updated bindings.
      *
-     * @param array<class-string, class-string|Closure(static):object> $bindings An array mapping abstract types to concrete implementations or factory closures.
+     * @param array<class-string, class-string|Closure(static):object|object> $bindings An array mapping abstract types to concrete implementations or factory closures.
      *
      * @return static Immutable instance with updated bindings.
      * @immutable
@@ -110,7 +112,9 @@ class Container {
     public function bindings(array $bindings): static {
         $c = clone $this;
         foreach ($bindings as $a => $concrete) {
-            $c->bindings[$a] = $concrete;
+            $c->bindings[$a] = (is_string($concrete) || $concrete instanceof Closure)
+                ? $concrete
+                : static fn() => $concrete;
             unset($c->cache[$a], $c->instances[$a]);
         }
         return $c;
