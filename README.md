@@ -66,16 +66,19 @@ $container = $container->share([
 dependency resolution.
 
 ```php
-// Bind an interface and let the container handle the construction of the concrete class
+// Let the container instantiate the concrete class
 $container = $container->bind(LoggerInterface::class, FileLogger::class);
-// Bind an interface, but create the concrete class yourself
+
+// Bind an already instantiated class
 $container = $container->bind(LoggerInterface::class, new Logger());
 
+// Add a list of bindings
 $container = $container->bindings([
     CacheInterface::class => RedisCache::class,
     QueueInterface::class => ClosureQueue::class,
 ]);
 
+// Bind a closure to instantiate a class
 $container = $container->bind(TemplateResponse::class, static function(Container $c) {
     return $c->create(TwigTemplate::class, [TEMPLATE_DIR])
 })
