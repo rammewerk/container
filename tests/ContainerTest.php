@@ -132,23 +132,23 @@ class ContainerTest extends TestCase {
     public function testSharedClassAndCaching(): void {
         // Create an instance
         $classC = $this->container->create(TestClassC::class, ['ignore']);
-        // Check that value is the same as we have created
+        // Check that the value is the same as we have created
         $this->assertEquals('ignore', $classC->value);
 
         // Get properties from container
         $reflection = new ReflectionClass($this->container);
-        $property_cache = $reflection->getProperty('cache');
-        $property_shared = $reflection->getProperty('shared');
-        $property_instances = $reflection->getProperty('instances');
+        $cacheProperty = $reflection->getProperty('cache');
+        $sharedProperty = $reflection->getProperty('shared');
+        $instancesProperty = $reflection->getProperty('instances');
 
         /**
          * Check that class is cached and not in shared instances
          *
          * @var array<class-string, Closure> $cache
          */
-        $cache = $property_cache->getValue($this->container);
+        $cache = $cacheProperty->getValue($this->container);
         /** @var array<class-string, object> $instances */
-        $instances = $property_instances->getValue($this->container);
+        $instances = $instancesProperty->getValue($this->container);
         $this->assertArrayHasKey(TestClassC::class, $cache);
         $this->assertArrayNotHasKey(TestClassC::class, $instances);
 
@@ -160,10 +160,11 @@ class ContainerTest extends TestCase {
          *
          * @var class-string[] $shared
          */
-        $shared = $property_shared->getValue($container);
+        $shared = $sharedProperty->getValue($container);
         $this->assertArrayHasKey(TestClassC::class, $shared);
 
-        $same_cache = $property_cache->getValue($container);
+        $same_cache = $cacheProperty->getValue($container);
+        $this->assertIsArray($same_cache);
         $this->assertArrayNotHasKey(TestClassC::class, $same_cache);
 
         // Now calling the class again (this makes it singleton)
@@ -172,8 +173,10 @@ class ContainerTest extends TestCase {
         /**
          * Check that cache is removed
          */
-        $new_instances = $property_instances->getValue($container);
-        $new_cache = $property_cache->getValue($container);
+        $new_instances = $instancesProperty->getValue($container);
+        $new_cache = $cacheProperty->getValue($container);
+        $this->assertIsArray($new_instances);
+        $this->assertIsArray($new_cache);
         $this->assertArrayHasKey(TestClassC::class, $new_instances);
         $this->assertArrayNotHasKey(TestClassC::class, $new_cache);
 
@@ -184,7 +187,7 @@ class ContainerTest extends TestCase {
          *
          * @var array<class-string, object> $created_instances
          */
-        $created_instances = $property_instances->getValue($container);
+        $created_instances = $instancesProperty->getValue($container);
         $this->assertArrayHasKey(TestClassC::class, $created_instances);
 
         /**
@@ -193,6 +196,11 @@ class ContainerTest extends TestCase {
         $classDuplicate = $container->create(TestClassC::class);
         $this->assertSame($classDuplicate, $classShared);
         $this->assertEquals($classShared->value, $classDuplicate->value);
+
+        // Flush instances check
+        $container->flushInstances();
+        $flushed_instances = $instancesProperty->getValue($container);
+        $this->assertSame([], $flushed_instances);
 
     }
 

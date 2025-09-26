@@ -123,6 +123,20 @@ class Container {
 
 
     /**
+     * Flushes all instantiated shared singletons.
+     *
+     * Clears the in-memory cache of created shared class instances.
+     * On the next creation request, new instances will be created again.
+     *
+     * @return void
+     */
+    public function flushInstances(): void {
+        $this->instances = [];
+    }
+
+
+
+    /**
      * Creates a fully constructed instance of the specified class, optionally using the provided
      * array of arguments for the class constructor.
      *
