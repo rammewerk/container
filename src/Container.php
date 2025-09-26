@@ -154,7 +154,8 @@ class Container {
         }
 
         if (isset($this->cache[$name])) {
-            return $this->cache[$name]($args); // @phpstan-ignore-line
+            $instance = $this->cache[$name]($args);
+            return isset($this->shared[$name]) ? $this->instances[$name] = $instance : $instance; // @phpstan-ignore-line
         }
 
         /** Handle binding if defined */
@@ -180,11 +181,12 @@ class Container {
 
             $closure = empty($params) ? static fn() => new $name() : $this->getClosure($class, $params);
 
+            $this->cache[$name] = $closure;
+
             if (isset($this->shared[$name])) {
                 return $this->instances[$name] = $closure($args);
             }
 
-            $this->cache[$name] = $closure;
             return $closure($args);
 
         } catch (ReflectionException $e) {

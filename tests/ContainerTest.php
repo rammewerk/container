@@ -178,7 +178,7 @@ class ContainerTest extends TestCase {
         $this->assertIsArray($new_instances);
         $this->assertIsArray($new_cache);
         $this->assertArrayHasKey(TestClassC::class, $new_instances);
-        $this->assertArrayNotHasKey(TestClassC::class, $new_cache);
+        $this->assertArrayHasKey(TestClassC::class, $new_cache);
 
         $classShared = $container->create(TestClassC::class, ['correct']);
 
