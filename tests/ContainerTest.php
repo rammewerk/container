@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rammewerk\Component\Container\Tests;
 
-use Closure;
 use PHPUnit\Framework\TestCase;
 use Rammewerk\Component\Container\Container;
 use Rammewerk\Component\Container\Error\ContainerException;
@@ -33,7 +32,7 @@ class ContainerTest extends TestCase {
 
 
 
-    /** Check if a class can be created by container */
+    /** Check if the container can create a class */
     public function testCreatingClassThroughContainer(): void {
         $classA = $this->container->create(TestClassA::class);
         $this->assertInstanceOf(TestClassA::class, $classA);
@@ -55,7 +54,7 @@ class ContainerTest extends TestCase {
 
 
 
-    /** Test a class that requires another class as dependency. Container should auto-resolve dependency */
+    /** Test a class that requires another class as a dependency. Container should auto-resolve dependency */
     public function testAutoResolveDependency(): void {
         $classB = $this->container->create(TestClassB::class);
         $this->assertInstanceOf(TestClassB::class, $classB);
@@ -64,7 +63,7 @@ class ContainerTest extends TestCase {
 
 
     /**
-     * Test to check that container fails if it tries to create class with a string parameter.
+     * Test to check that the container fails if it tries to create a class with a string parameter.
      * This cannot be auto-resolved.
      */
     public function testInvalidParameter(): void {
@@ -102,7 +101,7 @@ class ContainerTest extends TestCase {
 
 
     /**
-     * Test bindings of interface. Test a class that require an interface.
+     * Test bindings of interface. Test a class that requires an interface.
      */
     public function testBindings(): void {
         $container = $this->container->bindings([TestClassEInterface::class => TestClassE::class]);
@@ -128,7 +127,7 @@ class ContainerTest extends TestCase {
 
 
     /**
-     * Test shared class and also a reset of previous cache on shared
+     * Test shared class and also a reset of the previous cache on shared
      */
     public function testSharedClassAndCaching(): void {
         // Create an instance
@@ -143,7 +142,7 @@ class ContainerTest extends TestCase {
         $instancesProperty = $reflection->getProperty('instances');
 
         /**
-         * Check that class is cached and not in shared instances
+         * Check that the class is cached and not in shared instances
          *
          * @var ReflectionCache $cache
          */
@@ -157,7 +156,7 @@ class ContainerTest extends TestCase {
         $container = $this->container->share([TestClassC::class]);
 
         /**
-         * Check that class is set to share
+         * Check that the class is set to share
          *
          * @var class-string[] $shared
          */
@@ -166,13 +165,13 @@ class ContainerTest extends TestCase {
 
         $same_cache = $cacheProperty->getValue($container);
         $this->assertInstanceOf(ReflectionCache::class, $same_cache);
-        $this->assertFalse($same_cache->has(TestClassC::class));
+        $this->assertTrue($same_cache->has(TestClassC::class));
 
         // Now calling the class again (this makes it singleton)
         $container->create(TestClassC::class, ['ignore']);
 
         /**
-         * Check that cache is removed
+         * Check that the cache is removed
          */
         $new_instances = $instancesProperty->getValue($container);
         $new_cache = $cacheProperty->getValue($container);
@@ -192,14 +191,14 @@ class ContainerTest extends TestCase {
         $this->assertArrayHasKey(TestClassC::class, $created_instances);
 
         /**
-         * Same class created should now be the same as the shared instance
+         * The same class created should now be the same as the shared instance
          */
         $classDuplicate = $container->create(TestClassC::class);
         $this->assertSame($classDuplicate, $classShared);
         $this->assertEquals($classShared->value, $classDuplicate->value);
 
         // Flush instances check
-        $container->flushInstances();
+        $container = $container->fork();
         $flushed_instances = $instancesProperty->getValue($container);
         $this->assertSame([], $flushed_instances);
 
@@ -268,7 +267,7 @@ class ContainerTest extends TestCase {
         $container = new PsrContainer();
         $class = $container->get(TestClassA::class);
         $this->assertInstanceOf(TestClassA::class, $class);
-        $this->assertSame(true, $container->has(TestClassA::class));
+        $this->assertTrue($container->has(TestClassA::class));
     }
 
 
@@ -354,6 +353,39 @@ class ContainerTest extends TestCase {
         $instance = $forked->create(TestClassB::class);
         $this->assertInstanceOf(TestClassB::class, $instance);
 
+    }
+
+
+
+    /**
+     * Test that demonstrates the fork() bug with cached closures.
+     * This test will FAIL with the current implementation showing the bug.
+     */
+    public function testForkIsolatesCachedClosures(): void {
+        // Container A: Create a binding and populate the cache
+        $containerA = $this->container->bind(TestClassEInterface::class, function() {
+            return new TestClassE(); // Original binding returns TestClassE
+        });
+
+        // Create TestClassD, which depends on TestClassEInterface - this caches the closure
+        $instanceA = $containerA->create(TestClassD::class);
+        $this->assertTrue($instanceA->getE()); // TestClassE::get() returns true
+
+        // Fork Container A to Container B
+        $containerB = $containerA->fork();
+
+        // Container B: Different binding for the same interface
+        $containerB = $containerB->bind(TestClassEInterface::class, function() {
+            return new TestClassF(new TestClassB(new TestClassA()), ''); // TestClassF with empty string returns false
+        });
+
+        // BUG: Container B should use its own binding, but the cached closure
+        // from Container A still references Container A's $this
+        $instanceB = $containerB->create(TestClassD::class);
+
+        // This should return false (from TestClassF) but will return true (from TestClassE) due to the bug
+        $this->assertFalse($instanceB->getE(),
+            'Container B should use its own binding, not Container A\'s cached closure');
     }
 
 

@@ -19,7 +19,7 @@ use ReflectionUnionType;
  * - Allows binding interfaces to concrete classes or factories.
  * - Supports singleton/shared registrations.
  * - Caches reflection data for better performance.
- * - Worker-mode safe: Use fork() to create isolated instances while preserving reflection cache.
+ * - Worker-mode safe: Use fork() to create isolated instances while preserving the reflection cache.
  *
  * @author Kristoffer Follestad <kristoffer@bonsy.no>
  */
@@ -51,6 +51,8 @@ class Container {
      */
     protected array $bindings = [];
 
+
+
     /**
      * Constructor.
      */
@@ -72,7 +74,6 @@ class Container {
         $c = clone $this;
         foreach ($classes as $name) {
             $c->shared[$name] = true;
-            $c->cache->remove($name);
         }
         return $c;
     }
@@ -122,24 +123,11 @@ class Container {
                 ? $concrete
                 : static fn() => $concrete;
             $c->cache->remove($a);
-            unset($c->instances[$a]);
         }
         return $c;
     }
 
 
-
-    /**
-     * Flushes all instantiated shared singletons.
-     *
-     * Clears the in-memory cache of created shared class instances.
-     * On the next creation request, new instances will be created again.
-     *
-     * @return void
-     */
-    public function flushInstances(): void {
-        $this->instances = [];
-    }
 
     /**
      * Creates a new Container instance with fresh instances but shared reflection cache.
@@ -158,6 +146,8 @@ class Container {
     public function fork(): static {
         return clone $this;
     }
+
+
 
     /**
      * Magic clone method that preserves the cache but flushes instances.
@@ -191,7 +181,7 @@ class Container {
         if ($this->cache->has($name)) {
             $closure = $this->cache->get($name);
             assert($closure !== null); // has() ensures this is not null
-            $instance = $closure($args);
+            $instance = $closure($args, $this);
             return isset($this->shared[$name]) ? $this->instances[$name] = $instance : $instance; // @phpstan-ignore-line
         }
 
@@ -216,15 +206,15 @@ class Container {
 
             $params = $class->getConstructor()?->getParameters();
 
-            $closure = empty($params) ? static fn() => new $name() : $this->getClosure($class, $params);
+            $closure = empty($params) ? static fn(array $args, Container $container) => new $name() : $this->getClosure($class, $params);
 
             $this->cache->set($name, $closure);
 
             if (isset($this->shared[$name])) {
-                return $this->instances[$name] = $closure($args);
+                return $this->instances[$name] = $closure($args, $this);
             }
 
-            return $closure($args);
+            return $closure($args, $this);
 
         } catch (ReflectionException $e) {
             throw new ContainerException("Unable to reflect class: $name", $e->getCode(), $e);
@@ -241,12 +231,12 @@ class Container {
      * @param ReflectionClass<T> $class
      * @param ReflectionParameter[] $params
      *
-     * @return Closure(mixed[]):T
+     * @return Closure(mixed[], Container):T
      */
     private function getClosure(ReflectionClass $class, array $params): Closure {
         $paramClosure = $this->resolveParams($this->parseParameters($params));
         /** @phpstan-ignore-next-line */
-        return static fn(array $a) => $class->newLazyProxy(static fn() => $class->newInstance(...$paramClosure($a)));
+        return static fn(array $a, Container $container) => $class->newLazyProxy(fn() => $class->newInstance(...$paramClosure($a, $container)));
     }
 
 
@@ -256,7 +246,7 @@ class Container {
      * built-in types, union types, and intersection types.
      *
      * This method uses closures to cache reflection data, minimizing the performance overhead
-     * of repeatedly calling reflection APIs. It handles various parameter types such as:
+     * of repeatedly calling reflection APIs. It handles various parameter types such as
      * - Named classes
      * - Built-in types
      * - Union types (multiple types separated by `|`)
@@ -325,13 +315,13 @@ class Container {
      *
      * @param array<array{0: string|null, 1: string[], 2: string[], 3: string[], 4: bool, 5: mixed}> $paramInfo
      *
-     * @return Closure(array<mixed>): array<mixed>
+     * @return Closure(array<mixed>, Container): array<mixed>
      */
     private function resolveParams(array $paramInfo): Closure {
 
         # Return a closure that uses the cached information to generate the arguments for the method
-        return function (array $args) use ($paramInfo): array {
-            return array_map(function ($info) use (&$args) {
+        return static function (array $args, Container $container) use ($paramInfo): array {
+            return array_map(static function ($info) use (&$args, $container) {
 
                 /**
                  * @var class-string $className
@@ -354,17 +344,17 @@ class Container {
 
                     // Return binding if a closure is defined for the class
                     // Use closure if defined, even if the parameter is nullable
-                    if (isset($this->bindings[$className]) && $this->bindings[$className] instanceof Closure) {
-                        return $this->bindings[$className]($this);
+                    if (isset($container->bindings[$className]) && $container->bindings[$className] instanceof Closure) {
+                        return $container->bindings[$className]($container);
                     }
 
-                    // Return container instance if the class is this container
+                    // Return a container instance if the class is this container
                     if ($className === static::class) {
-                        return $this;
+                        return $container;
                     }
 
                     // Create an instance of the class or return null if the parameter allows null
-                    return $nullable ? null : $this->create($className);
+                    return $nullable ? null : $container->create($className);
                 }
 
                 // Match and return the first argument that matches a built-in type

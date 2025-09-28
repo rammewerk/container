@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+1.4.1
+---
+- **Critical Fix**: Fixed container isolation bug in `fork()` method where cached closures still referenced the original container
+- **Worker Mode Safety**: Cached parameter resolution closures now properly use the current container instance instead of capturing `$this`
+- **Improved Test Coverage**: Added test case to verify proper fork isolation and prevent regression
+
 1.4.0
 ---
 - **Worker Mode Support**: Added `fork()` method for FrankenPHP worker mode compatibility

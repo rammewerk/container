@@ -28,7 +28,7 @@ class ReflectionCache {
      * Stores a compiled closure for a given class.
      *
      * @param class-string $className
-     * @param Closure(mixed[]):object $closure
+     * @param Closure(mixed[], Container):object $closure
      */
     public function set(string $className, Closure $closure): void {
         $this->cache[$className] = $closure;
@@ -41,7 +41,7 @@ class ReflectionCache {
      *
      * @param class-string $className
      *
-     * @return Closure(mixed[]):object|null
+     * @return Closure(mixed[], Container):object|null
      */
     public function get(string $className): ?Closure {
         return $this->cache[$className] ?? null;
