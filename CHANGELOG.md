@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+1.4.0
+---
+- **Worker Mode Support**: Added `fork()` method for FrankenPHP worker mode compatibility
+- **Reflection Cache Separation**: Introduced `ReflectionCache` class for shared performance optimization
+- **Instance Isolation**: Container cloning now preserves cache but flushes instances for request isolation
+- **Enhanced Documentation**: Added a comprehensive worker mode section to README
+
 1.2.5
 ---
 

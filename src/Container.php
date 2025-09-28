@@ -54,8 +54,8 @@ class Container {
     /**
      * Constructor.
      */
-    public function __construct(?ReflectionCache $cache = null) {
-        $this->cache = $cache ?? new ReflectionCache();
+    public function __construct() {
+        $this->cache = new ReflectionCache();
     }
 
 

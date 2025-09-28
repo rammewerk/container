@@ -348,6 +348,7 @@ class ContainerTest extends TestCase {
         $cacheClass = new ReflectionClass($cache);
         $reflectionCache = $cacheClass->getProperty('cache')->getValue($cache);
         $this->assertIsArray($reflectionCache);
+        // One would expect more entries, but remember our lazy load of dependencies
         $this->assertCount(2, $reflectionCache);
 
         $instance = $forked->create(TestClassB::class);
