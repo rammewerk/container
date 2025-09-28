@@ -19,17 +19,16 @@ use ReflectionUnionType;
  * - Allows binding interfaces to concrete classes or factories.
  * - Supports singleton/shared registrations.
  * - Caches reflection data for better performance.
+ * - Worker-mode safe: Use fork() to create isolated instances while preserving reflection cache.
  *
  * @author Kristoffer Follestad <kristoffer@bonsy.no>
  */
 class Container {
 
     /**
-     * Reflection cache
-     *
-     * @var array<class-string, Closure(mixed[]):object>
+     * Reflection cache (shared across instances for performance)
      */
-    protected array $cache = [];
+    protected ReflectionCache $cache;
 
     /**
      * Singleton instances
@@ -52,6 +51,13 @@ class Container {
      */
     protected array $bindings = [];
 
+    /**
+     * Constructor.
+     */
+    public function __construct(?ReflectionCache $cache = null) {
+        $this->cache = $cache ?? new ReflectionCache();
+    }
+
 
 
     /**
@@ -66,7 +72,7 @@ class Container {
         $c = clone $this;
         foreach ($classes as $name) {
             $c->shared[$name] = true;
-            unset($c->cache[$name]);
+            $c->cache->remove($name);
         }
         return $c;
     }
@@ -115,7 +121,8 @@ class Container {
             $c->bindings[$a] = (is_string($concrete) || $concrete instanceof Closure)
                 ? $concrete
                 : static fn() => $concrete;
-            unset($c->cache[$a], $c->instances[$a]);
+            $c->cache->remove($a);
+            unset($c->instances[$a]);
         }
         return $c;
     }
@@ -134,6 +141,34 @@ class Container {
         $this->instances = [];
     }
 
+    /**
+     * Creates a new Container instance with fresh instances but shared reflection cache.
+     *
+     * This method is designed for worker mode environments (like FrankenPHP) where
+     * you need to isolate instances between requests while preserving the expensive
+     * reflection cache for performance.
+     *
+     * The returned container will:
+     * - Share the same reflection cache (for performance)
+     * - Have empty instances array (for isolation)
+     * - Keep the same configuration (shared, bindings)
+     *
+     * @return static Fresh container instance with a shared cache
+     */
+    public function fork(): static {
+        return clone $this;
+    }
+
+    /**
+     * Magic clone method that preserves the cache but flushes instances.
+     *
+     * This enables worker-mode safe cloning where the expensive reflection
+     * cache is preserved, but instances are isolated between requests.
+     */
+    public function __clone(): void {
+        $this->instances = [];
+    }
+
 
 
     /**
@@ -148,13 +183,15 @@ class Container {
      */
     public function create(string $name, array $args = []) {
 
-        /** Return shared instance (singleton) if exist  */
+        /** Return a shared instance (singleton) if exist  */
         if (isset($this->instances[$name])) {
             return $this->instances[$name]; // @phpstan-ignore-line
         }
 
-        if (isset($this->cache[$name])) {
-            $instance = $this->cache[$name]($args);
+        if ($this->cache->has($name)) {
+            $closure = $this->cache->get($name);
+            assert($closure !== null); // has() ensures this is not null
+            $instance = $closure($args);
             return isset($this->shared[$name]) ? $this->instances[$name] = $instance : $instance; // @phpstan-ignore-line
         }
 
@@ -181,7 +218,7 @@ class Container {
 
             $closure = empty($params) ? static fn() => new $name() : $this->getClosure($class, $params);
 
-            $this->cache[$name] = $closure;
+            $this->cache->set($name, $closure);
 
             if (isset($this->shared[$name])) {
                 return $this->instances[$name] = $closure($args);

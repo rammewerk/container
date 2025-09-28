@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Rammewerk\Component\Container\Container;
 use Rammewerk\Component\Container\Error\ContainerException;
 use Rammewerk\Component\Container\PsrContainer;
+use Rammewerk\Component\Container\ReflectionCache;
 use Rammewerk\Component\Container\Tests\TestData\TestClassA;
 use Rammewerk\Component\Container\Tests\TestData\TestClassB;
 use Rammewerk\Component\Container\Tests\TestData\TestClassC;
@@ -144,12 +145,12 @@ class ContainerTest extends TestCase {
         /**
          * Check that class is cached and not in shared instances
          *
-         * @var array<class-string, Closure> $cache
+         * @var ReflectionCache $cache
          */
         $cache = $cacheProperty->getValue($this->container);
         /** @var array<class-string, object> $instances */
         $instances = $instancesProperty->getValue($this->container);
-        $this->assertArrayHasKey(TestClassC::class, $cache);
+        $this->assertTrue($cache->has(TestClassC::class));
         $this->assertArrayNotHasKey(TestClassC::class, $instances);
 
         // Define class as shared
@@ -164,8 +165,8 @@ class ContainerTest extends TestCase {
         $this->assertArrayHasKey(TestClassC::class, $shared);
 
         $same_cache = $cacheProperty->getValue($container);
-        $this->assertIsArray($same_cache);
-        $this->assertArrayNotHasKey(TestClassC::class, $same_cache);
+        $this->assertInstanceOf(ReflectionCache::class, $same_cache);
+        $this->assertFalse($same_cache->has(TestClassC::class));
 
         // Now calling the class again (this makes it singleton)
         $container->create(TestClassC::class, ['ignore']);
@@ -176,9 +177,9 @@ class ContainerTest extends TestCase {
         $new_instances = $instancesProperty->getValue($container);
         $new_cache = $cacheProperty->getValue($container);
         $this->assertIsArray($new_instances);
-        $this->assertIsArray($new_cache);
+        $this->assertInstanceOf(ReflectionCache::class, $new_cache);
         $this->assertArrayHasKey(TestClassC::class, $new_instances);
-        $this->assertArrayHasKey(TestClassC::class, $new_cache);
+        $this->assertTrue($new_cache->has(TestClassC::class));
 
         $classShared = $container->create(TestClassC::class, ['correct']);
 
@@ -276,6 +277,82 @@ class ContainerTest extends TestCase {
         $container = $this->container->bind(TestClassEInterface::class, new TestClassE());
         $class = $container->create(TestClassEInterface::class);
         $this->assertInstanceOf(TestClassE::class, $class);
+    }
+
+
+
+    /**
+     * Test that fork() creates a new container with shared cache but isolated instances.
+     * This is the key functionality for FrankenPHP worker mode.
+     */
+    public function testForkPreservesCache(): void {
+        // Setup: Create a shared instance in the original container
+        $container = $this->container->share([TestClassA::class]);
+        $original = $container->create(TestClassA::class);
+
+        // Fork the container (simulating worker mode request isolation)
+        $forked = $container->fork();
+
+        // The forked container should create a new instance but a different object.
+        $forkedInstance = $forked->create(TestClassA::class);
+        $this->assertNotSame($original, $forkedInstance);
+        $this->assertInstanceOf(TestClassA::class, $forkedInstance);
+
+        // But both should be singletons within their respective containers
+        $this->assertSame($forkedInstance, $forked->create(TestClassA::class));
+        $this->assertSame($original, $container->create(TestClassA::class));
+    }
+
+
+
+    /**
+     * Test that cloning a container flushes instances but preserves configuration.
+     */
+    public function testCloneFlushesInstances(): void {
+        // Set up a shared instance
+        $container = $this->container->share([TestClassA::class]);
+        $original = $container->create(TestClassA::class);
+
+        // Clone should flush instances
+        $cloned = clone $container;
+        $clonedInstance = $cloned->create(TestClassA::class);
+
+        // Should get different instances
+        $this->assertNotSame($original, $clonedInstance);
+
+        // But both should still be singletons within their containers
+        $this->assertSame($clonedInstance, $cloned->create(TestClassA::class));
+        $this->assertSame($original, $container->create(TestClassA::class));
+    }
+
+
+
+    /**
+     * Test that the reflection cache is preserved across forks for performance.
+     */
+    public function testReflectionCacheIsShared(): void {
+        // Create instance to populate cache
+        $container = $this->container;
+        $container->create(TestClassB::class);
+        $container->create(TestClassF::class);
+
+        // Fork and create the same class - should use cached reflection
+        $forked = $container->fork();
+
+        // Ensure that the cached class is still cached after forking
+        $reflection = new ReflectionClass($forked);
+        $cache = $reflection->getProperty('cache')->getValue($forked);
+        $this->assertInstanceOf(ReflectionCache::class, $cache);
+        $this->assertTrue($cache->has(TestClassB::class));
+
+        $cacheClass = new ReflectionClass($cache);
+        $reflectionCache = $cacheClass->getProperty('cache')->getValue($cache);
+        $this->assertIsArray($reflectionCache);
+        $this->assertCount(2, $reflectionCache);
+
+        $instance = $forked->create(TestClassB::class);
+        $this->assertInstanceOf(TestClassB::class, $instance);
+
     }
 
 

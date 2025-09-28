@@ -446,6 +446,45 @@ fastest DI containers available.
 
 For benchmark results see: https://github.com/rammewerk/php-di-container-benchmarks
 
+Worker Mode Support (FrankenPHP)
+---------------
+
+Rammewerk Container is optimized for worker mode environments like FrankenPHP, where the application stays in memory between requests. The container provides a `fork()` method that creates isolated instances while preserving the expensive reflection cache for optimal performance.
+
+### The Challenge
+
+In worker mode, shared singleton instances can leak between requests, potentially causing data contamination. Traditional solutions like `flushInstances()` clear all instances but also lose the performance benefits of cached reflection data.
+
+### The Solution
+
+The `fork()` method creates a new container that:
+- **Preserves reflection cache** for fast instantiation
+- **Isolates instances** between requests
+- **Maintains configuration** (bindings, shared classes)
+
+```php
+// Set up your container (typically once at startup)
+$container = new Container();
+$container = $container->share([Logger::class, Database::class]);
+
+// For each request in worker mode:
+$requestContainer = $container->fork();
+
+// Use the forked container for the request
+$service = $requestContainer->create(UserService::class);
+```
+
+### How It Works
+
+PHP's `clone` operator performs a shallow clone, which means:
+- **Reflection cache is shared** (good for performance)
+- **Instance arrays are copied and flushed** (good for isolation)
+- **Configuration is preserved** (bindings, shared settings)
+
+This approach gives you the best of both worlds: worker-mode safety with maximum performance.
+
+For benchmark results see: https://github.com/rammewerk/php-di-container-benchmarks
+
 PSR-11 Support
 ---------------
 The container supports PSR-11: ContainerInterface through an extended implementation called `PsrContainer`. Since PSR-11
